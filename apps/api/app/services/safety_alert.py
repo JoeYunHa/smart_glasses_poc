@@ -1,9 +1,13 @@
 """SafetyAlert service."""
 
 from app.agent.policy import sanitize_safety_response
-from app.groq_client import call_vlm
-from app.schemas.agent import ActionResult
 from app.schemas.context import ContextRequest
+from app.services.common import (
+    ServiceRunResult,
+    append_optional_context,
+    first_image_or_none,
+    run_vlm_service,
+)
 
 _SYSTEM_PROMPT = (
     "You are a safety assistant for smart glasses. "
@@ -17,15 +21,15 @@ async def run(
     image_b64_list: list[str],
     graph_context: str,
     request_id: str,
-) -> tuple[str, bool, ActionResult | None]:
+) -> ServiceRunResult:
     if not image_b64_list:
         text = "No image was provided, so a safety assessment cannot be performed."
-        return sanitize_safety_response(text), False, None
+        return sanitize_safety_response(text), False, None, {}
 
     prompt = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
-    if graph_context:
-        prompt += f"\n\nReference context: {graph_context}"
-
-    raw = await call_vlm(prompt, image_b64=image_b64_list[0])
-    cleaned = sanitize_safety_response(raw)
-    return cleaned, True, None
+    prompt = append_optional_context(prompt, "Reference context", graph_context)
+    return await run_vlm_service(
+        prompt,
+        image_b64=first_image_or_none(image_b64_list),
+        postprocess=sanitize_safety_response,
+    )

@@ -1,7 +1,11 @@
 from datetime import datetime
+from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.schemas.agent import ServiceType, LatencyBreakdown
+
+FallbackReason = Literal["low_confidence", "vlm_timeout", "parse_error", "none"]
+FailureType = Literal["routing_error", "vlm_error", "action_error", "none"]
 
 
 class EvaluationLog(BaseModel):
@@ -17,3 +21,9 @@ class EvaluationLog(BaseModel):
     latency_ms: LatencyBreakdown = Field(default_factory=LatencyBreakdown)
     action_result: str = "skipped"
     user_request: str = ""
+
+    token_count: int = 0
+    image_payload_bytes: int = 0
+    cloud_called: bool = False
+    fallback_reason: FallbackReason = "none"
+    failure_type: FailureType = "none"

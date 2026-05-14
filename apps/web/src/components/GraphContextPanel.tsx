@@ -45,43 +45,49 @@ export default function GraphContextPanel() {
   const displayNodes = results ?? nodes.slice(0, 20);
 
   return (
-    <div className="bg-gray-900 rounded-xl p-5 border border-gray-700 space-y-4">
-      <div className="flex items-center gap-2">
-        <Network className="w-4 h-4 text-purple-400" />
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">GraphRAG Context</h2>
-        <span className="ml-auto text-xs text-gray-500 font-mono">{nodes.length} nodes</span>
-        <button onClick={() => void refresh()} className="text-gray-500 hover:text-gray-300">
+    <div className="telemetry-card reveal-up rounded-[24px] p-5 sm:p-6">
+      <div className="mb-5 flex items-center gap-2">
+        <Network className="h-4 w-4 text-[var(--accent)]" />
+        <div>
+          <p className="panel-label">Structured Memory</p>
+          <h2 className="display-face text-2xl font-bold uppercase text-white">GraphRAG Context</h2>
+        </div>
+        <span className="ml-auto rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-[var(--text-faint)]">{nodes.length} nodes</span>
+        <button onClick={() => void refresh()} className="rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-2 text-[var(--text-faint)] hover:text-white">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
 
-      <form onSubmit={(e) => void handleSearch(e)} className="flex gap-2">
+      <form onSubmit={(e) => void handleSearch(e)} className="mb-4 flex gap-2">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by keyword, for example cafe or light"
-          className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-purple-500"
+          className="flex-1 rounded-[16px] border border-[var(--line)] bg-[rgba(3,9,14,0.58)] px-4 py-3 text-sm text-white placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none"
         />
-        <button type="submit" className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors">
+        <button type="submit" className="rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[var(--text-dim)] transition-colors hover:text-white">
           <Search className="w-3.5 h-3.5" />
         </button>
         {results && (
-          <button type="button" onClick={() => setResults(null)} className="text-xs text-gray-500 hover:text-gray-300 px-2">
+          <button type="button" onClick={() => setResults(null)} className="px-2 text-xs uppercase tracking-[0.12em] text-[var(--text-faint)] hover:text-white">
             Reset
           </button>
         )}
       </form>
 
       {displayNodes.length === 0 ? (
-        <p className="text-gray-500 text-xs">No nodes stored yet. Run the agent to populate scene memory.</p>
+        <p className="text-sm text-[var(--text-dim)]">No nodes stored yet. Run the agent to populate scene memory.</p>
       ) : (
-        <div className="space-y-1.5 max-h-64 overflow-y-auto">
+        <div className="soft-scroll space-y-2 max-h-[30rem] overflow-y-auto">
           {displayNodes.map((node) => {
             const colorClass = NODE_COLORS[node.type as string] ?? "bg-gray-800 border-gray-600 text-gray-300";
             return (
-              <div key={node.id} className={`flex items-start gap-2 p-2 rounded-lg border text-xs ${colorClass}`}>
-                <span className="font-medium shrink-0">[{node.type as string}]</span>
-                <span className="text-gray-300 truncate">
+              <div key={node.id} className={`rounded-[18px] border p-3 text-xs ${colorClass}`}>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="display-face text-sm font-bold uppercase tracking-[0.08em]">[{node.type as string}]</span>
+                  <span className="font-mono text-[10px] text-white/55">{String(node.id).slice(0, 18)}</span>
+                </div>
+                <span className="block leading-6 text-white/88">
                   {(node.user_request as string | undefined) ??
                     (node.place_name as string | undefined) ??
                     (node.name as string | undefined) ??

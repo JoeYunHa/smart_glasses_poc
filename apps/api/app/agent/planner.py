@@ -3,28 +3,18 @@
 import time
 import uuid
 
-import cv2
-import numpy as np
-
-from app.agent import router as svc_router
-from app.config import settings
+from app.agent.pipeline_support import (
+    build_latency,
+    classify_failure,
+    route_service,
+    run_perception,
+)
+from app.agent.service_registry import get_service_runner
 from app.evaluation import logger as eval_logger
 from app.memory import graph_store, retrieval
-from app.perception.frame_sampler import sample_frames
-from app.perception.image_preprocessor import frame_to_b64, preprocess_image_bytes
-from app.perception.keyframe_selector import select_keyframes
-from app.schemas.agent import AgentResponse, LatencyBreakdown, ServiceType
+from app.schemas.agent import AgentResponse, ServiceType
 from app.schemas.context import AgentMode, ContextRequest
 from app.schemas.log import EvaluationLog
-from app.services import context_memory, device_control, navigation, safety_alert, scene_assistant
-
-_SERVICE_MAP = {
-    "safety_alert": safety_alert.run,
-    "device_control": device_control.run,
-    "navigation": navigation.run,
-    "context_memory": context_memory.run,
-    "scene_assistant": scene_assistant.run,
-}
 
 
 def _ms() -> int:
@@ -40,116 +30,72 @@ async def run_pipeline(
     t_start = _ms()
 
     # 1. Perception: frame sampling + keyframe selection
-    t0 = _ms()
-    keyframes: list[np.ndarray] = []
-    original_frame_count = 0
-    selected_keyframe_count = 0
-    keyframe_selection_ms = 0
-
-    if video_bytes:
-        fps_target = 2 if ctx.mode == AgentMode.optimized else None
-        frames = sample_frames(video_bytes, fps_target=fps_target)
-        frame_sampling_ms = _ms() - t0
-        original_frame_count = len(frames)
-        if ctx.mode == AgentMode.optimized:
-            t_keyframes = _ms()
-            keyframes = select_keyframes(frames, max_keyframes=settings.max_keyframes)
-            keyframe_selection_ms = _ms() - t_keyframes
-        else:
-            keyframes = frames
-        selected_keyframe_count = len(keyframes)
-    elif image_bytes:
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if img is not None:
-            keyframes = [img]
-        original_frame_count = 1
-        selected_keyframe_count = 1
-        frame_sampling_ms = _ms() - t0
-    else:
-        frame_sampling_ms = _ms() - t0
-
-    # 2. Encode keyframes to base64
-    if image_bytes and not video_bytes:
-        image_b64_list = [preprocess_image_bytes(image_bytes)]
-    else:
-        image_b64_list = [frame_to_b64(f) for f in keyframes]
+    perception = run_perception(image_bytes, video_bytes, ctx.mode, _ms)
+    image_b64_list = perception.image_b64_list
 
     # 3. GraphRAG retrieval (optimized only)
     t1 = _ms()
     graph_context = ""
     retrieved_nodes = 0
     if ctx.mode == AgentMode.optimized:
-        similar = retrieval.find_similar(ctx.user_request)
-        retrieved_nodes = len(similar)
-        if similar:
-            graph_context = "Relevant prior context: " + "; ".join(similar[:3])
+        retrieval_result = retrieval.retrieve_context(ctx.user_request)
+        retrieved_nodes = len(retrieval_result.combined)
+        if retrieval_result.combined:
+            graph_context = "Relevant prior context: " + "; ".join(retrieval_result.combined[:3])
     graph_retrieval_ms = _ms() - t1
 
     # 4. Route: rule-based; VLM fallback if confidence < threshold
-    t2 = _ms()
-    location_type = ctx.gps.location_type if ctx.gps else ""
-    has_devices = len(ctx.nearby_devices) > 0
-    service_name, confidence = svc_router.route(ctx.user_request, location_type, has_devices)
-
-    vlm_used_routing = False
-    routing_vlm_call_count = 0
-    if confidence < settings.router_confidence_threshold:
-        from app.groq_client import call_vlm
-
-        routing_prompt = (
-            "Classify the following request as exactly one of these services:\n"
-            "scene_assistant, navigation, device_control, safety_alert, context_memory\n"
-            "Return only the service name.\n\n"
-            f"Request: {ctx.user_request}"
-        )
-        raw = await call_vlm(routing_prompt)
-        routing_vlm_call_count = 1
-        for svc in _SERVICE_MAP:
-            if svc in raw.lower():
-                service_name = svc
-                confidence = 0.6
-                break
-        vlm_used_routing = True
-
-    routing_ms = _ms() - t2
+    routing_result, routing_ms = await route_service(ctx, _ms)
+    service_name = routing_result.service_name
+    confidence = routing_result.confidence
 
     # 5. Run selected service
     t3 = _ms()
-    service_fn = _SERVICE_MAP.get(service_name, scene_assistant.run)
-    response_text, vlm_used_service, action_result = await service_fn(
+    service_fn = get_service_runner(service_name)
+    response_text, vlm_used_service, action_result, service_vlm_usage = await service_fn(
         ctx, image_b64_list, graph_context, request_id
     )
     vlm_ms = _ms() - t3
-    vlm_used = vlm_used_routing or vlm_used_service
+    vlm_used = routing_result.vlm_used or vlm_used_service
 
     total_ms = max(1, _ms() - t_start)
-    latency = LatencyBreakdown(
-        frame_sampling=frame_sampling_ms,
-        keyframe_selection=keyframe_selection_ms,
-        graph_retrieval=graph_retrieval_ms,
-        routing=routing_ms,
-        vlm=vlm_ms,
-        total=total_ms,
-    )
+    latency = build_latency(perception, graph_retrieval_ms, routing_ms, vlm_ms, total_ms)
 
     # 6. Store in memory
     graph_store.add_scene(request_id, ctx, service_name)
     retrieval.store_context(request_id, ctx.user_request, service_name, response_text[:120])
 
     # 7. Evaluation log
+    image_payload_bytes = sum(len(b64.encode()) for b64 in image_b64_list)
+    cloud_called = routing_result.vlm_used or vlm_used_service
+    token_count = (
+        routing_result.usage.get("total_tokens", 0)
+        + service_vlm_usage.get("total_tokens", 0)
+    )
+    failure_type = classify_failure(
+        service_name,
+        action_result.success if action_result else None,
+        vlm_used,
+        response_text,
+    )
+
     log = EvaluationLog(
         request_id=request_id,
         mode=ctx.mode.value,
         selected_service=ServiceType(service_name),
         router_confidence=confidence,
-        original_frame_count=original_frame_count,
-        selected_keyframe_count=selected_keyframe_count,
-        vlm_call_count=routing_vlm_call_count + (1 if vlm_used_service else 0),
+        original_frame_count=perception.original_frame_count,
+        selected_keyframe_count=perception.selected_keyframe_count,
+        vlm_call_count=routing_result.vlm_call_count + (1 if vlm_used_service else 0),
         retrieved_graph_nodes=retrieved_nodes,
         latency_ms=latency,
         action_result="success" if (action_result and action_result.success) else ("failed" if action_result else "skipped"),
         user_request=ctx.user_request,
+        token_count=token_count,
+        image_payload_bytes=image_payload_bytes,
+        cloud_called=cloud_called,
+        fallback_reason=routing_result.fallback_reason,
+        failure_type=failure_type,
     )
     await eval_logger.write_log(log)
 
@@ -160,8 +106,8 @@ async def run_pipeline(
         vlm_used=vlm_used,
         response_text=response_text,
         action_result=action_result,
-        original_frame_count=original_frame_count,
-        selected_keyframe_count=selected_keyframe_count,
+        original_frame_count=perception.original_frame_count,
+        selected_keyframe_count=perception.selected_keyframe_count,
         retrieved_graph_nodes=retrieved_nodes,
         latency_ms=latency,
         mode=ctx.mode.value,

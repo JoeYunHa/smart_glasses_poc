@@ -1,8 +1,7 @@
 """NavigationAssistant service."""
 
-from app.groq_client import call_vlm
-from app.schemas.agent import ActionResult
 from app.schemas.context import ContextRequest
+from app.services.common import ServiceRunResult, first_image_or_none, run_vlm_service
 
 
 async def run(
@@ -10,7 +9,7 @@ async def run(
     image_b64_list: list[str],
     graph_context: str,
     request_id: str,
-) -> tuple[str, bool, ActionResult | None]:
+) -> ServiceRunResult:
     gps_info = ""
     if ctx.gps:
         gps_info = (
@@ -27,5 +26,4 @@ async def run(
         f"User request: {ctx.user_request}"
     )
 
-    response = await call_vlm(prompt, image_b64=image_b64_list[0] if image_b64_list else None)
-    return response, True, None
+    return await run_vlm_service(prompt, image_b64=first_image_or_none(image_b64_list))

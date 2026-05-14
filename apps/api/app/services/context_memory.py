@@ -1,9 +1,8 @@
 """ContextMemory service."""
 
-from app.groq_client import call_vlm
-from app.memory import retrieval
-from app.schemas.agent import ActionResult
+from app.memory.retrieval import retrieve_context
 from app.schemas.context import ContextRequest
+from app.services.common import ServiceRunResult, run_vlm_service
 
 
 async def run(
@@ -11,11 +10,12 @@ async def run(
     image_b64_list: list[str],
     graph_context: str,
     request_id: str,
-) -> tuple[str, bool, ActionResult | None]:
-    similar = retrieval.find_similar(ctx.user_request, top_k=5)
+) -> ServiceRunResult:
+    retrieval_result = retrieve_context(ctx.user_request, top_k=5)
+    similar = retrieval_result.combined
 
     if not similar:
-        return "No relevant prior memory was found for this request.", False, None
+        return "No relevant prior memory was found for this request.", False, None, {}
 
     memory_text = "\n".join(f"- {s}" for s in similar)
     prompt = (
@@ -25,5 +25,4 @@ async def run(
         f"User request: {ctx.user_request}"
     )
 
-    response = await call_vlm(prompt, image_b64=None)
-    return response, True, None
+    return await run_vlm_service(prompt, image_b64=None)

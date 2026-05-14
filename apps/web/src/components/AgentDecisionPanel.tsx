@@ -17,8 +17,11 @@ interface Props {
 export default function AgentDecisionPanel({ response }: Props) {
   if (!response) {
     return (
-      <div className="bg-gray-900 rounded-xl p-5 border border-gray-700 flex items-center justify-center h-32">
-        <p className="text-gray-500 text-sm">Run the agent to inspect the pipeline decision.</p>
+      <div className="telemetry-card reveal-up flex h-40 items-center justify-center rounded-[24px] p-6">
+        <div className="text-center">
+          <p className="panel-label">Decision Trace</p>
+          <p className="mt-3 text-sm text-[var(--text-dim)]">Run the agent to inspect the pipeline decision.</p>
+        </div>
       </div>
     );
   }
@@ -27,43 +30,55 @@ export default function AgentDecisionPanel({ response }: Props) {
   const confidencePct = Math.round(response.router_confidence * 100);
 
   return (
-    <div className="bg-gray-900 rounded-xl p-5 border border-gray-700 space-y-4">
-      <div className="flex items-center gap-2">
-        <Brain className="w-4 h-4 text-purple-400" />
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Agent Decision</h2>
+    <div className="telemetry-card reveal-up rounded-[24px] p-5 sm:p-6">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <Brain className="h-4 w-4 text-[var(--signal)]" />
+            <span className="panel-label">Agent Decision</span>
+          </div>
+          <h2 className="display-face text-2xl font-bold uppercase text-white">Optimization Route</h2>
+          <p className="mt-1 text-sm text-[var(--text-dim)]">
+            Watch the request move through compression, memory retrieval, routing, and response generation.
+          </p>
+        </div>
+        <div className="rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-[var(--text-faint)]">
+          req {response.request_id.slice(0, 8)}
+        </div>
       </div>
 
-      <div className="flex items-center gap-1.5 text-xs text-gray-500 flex-wrap">
+      <div className="mb-5 grid gap-2 sm:grid-cols-5">
         {["Perception", "GraphRAG", "Router", "Service", "Log"].map((step, i, arr) => (
-          <span key={step} className="flex items-center gap-1">
-            <span className={i === 2 ? "text-purple-400 font-medium" : ""}>{step}</span>
-            {i < arr.length - 1 && <ChevronRight className="w-3 h-3" />}
-          </span>
+          <div key={step} className="relative rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-3">
+            <p className={`display-face text-base font-bold uppercase ${i === 2 ? "text-[var(--signal)]" : "text-white"}`}>{step}</p>
+            {i < arr.length - 1 && <ChevronRight className="absolute -right-2 top-1/2 hidden h-4 w-4 -translate-y-1/2 text-[var(--text-faint)] sm:block" />}
+          </div>
         ))}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="mb-5 flex flex-wrap items-center gap-3">
         <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${svc.color}`}>
           {svc.label}
         </span>
-        <span className="text-xs text-gray-400">
-          Confidence <span className="text-white font-mono">{confidencePct}%</span>
+        <span className="rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-xs text-[var(--text-dim)]">
+          Confidence <span className="ml-1 font-mono text-white">{confidencePct}%</span>
         </span>
         {response.vlm_used && (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-orange-900/40 border border-orange-700 text-orange-400">
+          <span className="rounded-full border border-[rgba(255,140,105,0.32)] bg-[rgba(255,140,105,0.14)] px-3 py-1.5 text-xs text-[var(--alert)]">
             VLM used
           </span>
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="mb-5 grid grid-cols-3 gap-3">
         <StatBox label="Input Frames" value={response.original_frame_count} />
         <StatBox label="Keyframes" value={response.selected_keyframe_count} highlight />
         <StatBox label="Graph Nodes" value={response.retrieved_graph_nodes} />
       </div>
 
-      <div className="space-y-1.5">
-        <p className="text-xs text-gray-500">Latency Breakdown</p>
+      <div className="rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] p-4">
+        <p className="panel-label mb-3">Latency Breakdown</p>
+        <div className="space-y-2">
         <LatencyBar label="Frame" ms={response.latency_ms.frame_sampling} total={response.latency_ms.total} color="bg-indigo-500" />
         {response.mode === "optimized" && (
           <LatencyBar label="Keyframe" ms={response.latency_ms.keyframe_selection} total={response.latency_ms.total} color="bg-cyan-500" />
@@ -71,7 +86,8 @@ export default function AgentDecisionPanel({ response }: Props) {
         <LatencyBar label="Graph" ms={response.latency_ms.graph_retrieval} total={response.latency_ms.total} color="bg-emerald-500" />
         <LatencyBar label="Router" ms={response.latency_ms.routing} total={response.latency_ms.total} color="bg-purple-500" />
         <LatencyBar label="VLM" ms={response.latency_ms.vlm} total={response.latency_ms.total} color="bg-orange-500" />
-        <p className="text-right text-xs text-gray-400 font-mono">Total: {response.latency_ms.total}ms</p>
+        </div>
+        <p className="mt-3 text-right text-xs font-mono text-[var(--text-dim)]">Total: {response.latency_ms.total}ms</p>
       </div>
     </div>
   );
@@ -79,9 +95,9 @@ export default function AgentDecisionPanel({ response }: Props) {
 
 function StatBox({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
   return (
-    <div className="bg-gray-800 rounded-lg p-3 text-center">
-      <p className={`text-lg font-mono font-bold ${highlight ? "text-purple-300" : "text-gray-200"}`}>{value}</p>
-      <p className="text-xs text-gray-500">{label}</p>
+    <div className="rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-3 text-center">
+      <p className={`display-face text-3xl font-bold leading-none ${highlight ? "text-[var(--signal)]" : "text-white"}`}>{value}</p>
+      <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-[var(--text-faint)]">{label}</p>
     </div>
   );
 }
@@ -90,11 +106,11 @@ function LatencyBar({ label, ms, total, color }: { label: string; ms: number; to
   const pct = total > 0 ? Math.round((ms / total) * 100) : 0;
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-500 w-12">{label}</span>
-      <div className="flex-1 bg-gray-800 rounded-full h-1.5">
+      <span className="w-14 text-[11px] uppercase tracking-[0.12em] text-[var(--text-faint)]">{label}</span>
+      <div className="h-2 flex-1 rounded-full bg-[rgba(255,255,255,0.06)]">
         <div className={`${color} h-1.5 rounded-full transition-all`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs text-gray-400 font-mono w-14 text-right">{ms}ms</span>
+      <span className="w-14 text-right text-xs font-mono text-[var(--text-dim)]">{ms}ms</span>
     </div>
   );
 }

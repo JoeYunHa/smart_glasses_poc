@@ -26,40 +26,46 @@ export default function PerformancePanel() {
   const modes = metrics ? Object.entries(metrics.by_mode) : [];
 
   return (
-    <div className="bg-gray-900 rounded-xl p-5 border border-gray-700 space-y-4">
-      <div className="flex items-center gap-2">
-        <BarChart3 className="w-4 h-4 text-purple-400" />
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Performance Metrics</h2>
+    <div className="telemetry-card reveal-up rounded-[24px] p-5 sm:p-6">
+      <div className="mb-5 flex items-center gap-2">
+        <BarChart3 className="h-4 w-4 text-[var(--amber)]" />
+        <div>
+          <p className="panel-label">Optimization Evidence</p>
+          <h2 className="display-face text-2xl font-bold uppercase text-white">Performance Metrics</h2>
+        </div>
         <button
           onClick={() => void fetch()}
-          className="ml-auto text-gray-500 hover:text-gray-300 transition-colors"
+          className="ml-auto rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-2 text-[var(--text-faint)] transition-colors hover:text-white"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
 
       {!metrics || metrics.total === 0 ? (
-        <p className="text-gray-500 text-xs">No evaluation runs logged yet.</p>
+        <p className="text-sm text-[var(--text-dim)]">No evaluation runs logged yet.</p>
       ) : (
         <>
-          <p className="text-xs text-gray-500">Total requests: <span className="text-white font-mono">{metrics.total}</span></p>
+          <div className="mb-4 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-4 py-3">
+            <p className="panel-label">Observed Samples</p>
+            <p className="display-face mt-2 text-3xl font-bold text-white">{metrics.total}</p>
+          </div>
 
           <div className="grid grid-cols-1 gap-3">
             {modes.map(([mode, m]) => (
-              <div key={mode} className="bg-gray-800 rounded-lg p-3 space-y-2">
-                <p className={`text-xs font-semibold ${mode === "optimized" ? "text-purple-400" : "text-gray-400"}`}>
+              <div key={mode} className="rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-4">
+                <p className={`display-face text-lg font-bold uppercase ${mode === "optimized" ? "text-[var(--signal)]" : "text-[var(--text-dim)]"}`}>
                   {mode.toUpperCase()} ({m.count})
                 </p>
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
                   <Metric label="Average latency" value={`${m.avg_latency_ms}ms`} />
                   <Metric label="VLM calls / req" value={m.avg_vlm_calls.toFixed(2)} />
                   <Metric label="Frame reduction" value={`${(m.avg_frame_reduction_ratio * 100).toFixed(0)}%`} highlight />
                   <Metric label="Graph nodes / req" value={m.avg_graph_nodes.toFixed(1)} />
                 </div>
                 {Object.entries(m.service_distribution).length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
+                  <div className="flex flex-wrap gap-1 pt-3">
                     {Object.entries(m.service_distribution).map(([svc, cnt]) => (
-                      <span key={svc} className="text-xs px-2 py-0.5 bg-gray-700 rounded-full text-gray-300">
+                      <span key={svc} className="rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-[var(--text-dim)]">
                         {svc.replace("_", " ")}: {cnt}
                       </span>
                     ))}
@@ -83,9 +89,9 @@ export default function PerformancePanel() {
 
 function Metric({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div>
-      <p className="text-gray-500">{label}</p>
-      <p className={`font-mono ${highlight ? "text-purple-300" : "text-gray-200"}`}>{value}</p>
+    <div className="rounded-[16px] border border-[var(--line)] bg-[rgba(3,9,14,0.52)] p-3">
+      <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-faint)]">{label}</p>
+      <p className={`mt-2 font-mono text-base ${highlight ? "text-[var(--signal)]" : "text-white"}`}>{value}</p>
     </div>
   );
 }
@@ -94,14 +100,15 @@ function ComparisonBar({ baseline, optimized }: { baseline: number; optimized: n
   if (!baseline || !optimized) return null;
   const saved = Math.round(((baseline - optimized) / baseline) * 100);
   return (
-    <div className="bg-gray-800 rounded-lg p-3">
-      <p className="text-xs text-gray-400 mb-2">Baseline vs Optimized latency</p>
-      <div className="space-y-1.5">
+    <div className="mt-4 rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-4">
+      <p className="panel-label mb-2">Latency Delta</p>
+      <p className="display-face text-xl font-bold uppercase text-white">Baseline vs Optimized</p>
+      <div className="mt-3 space-y-2">
         <BarRow label="Baseline" ms={baseline} max={Math.max(baseline, optimized)} color="bg-gray-500" />
         <BarRow label="Optimized" ms={optimized} max={Math.max(baseline, optimized)} color="bg-purple-500" />
       </div>
       {saved > 0 && (
-        <p className="text-xs text-emerald-400 mt-2 font-medium">
+        <p className="mt-3 text-sm font-medium text-[var(--signal)]">
           Optimized is {saved}% faster
         </p>
       )}
@@ -113,11 +120,11 @@ function BarRow({ label, ms, max, color }: { label: string; ms: number; max: num
   const pct = max > 0 ? (ms / max) * 100 : 0;
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-500 w-20">{label}</span>
-      <div className="flex-1 bg-gray-700 rounded-full h-2">
+      <span className="w-20 text-[11px] uppercase tracking-[0.12em] text-[var(--text-faint)]">{label}</span>
+      <div className="h-2 flex-1 rounded-full bg-[rgba(255,255,255,0.06)]">
         <div className={`${color} h-2 rounded-full`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs font-mono text-gray-300 w-16 text-right">{ms}ms</span>
+      <span className="w-16 text-right text-xs font-mono text-[var(--text-dim)]">{ms}ms</span>
     </div>
   );
 }

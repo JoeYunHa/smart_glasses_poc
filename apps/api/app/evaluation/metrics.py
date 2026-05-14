@@ -16,6 +16,11 @@ def aggregate(limit: int = 200) -> dict:
         "vlm_calls": 0,
         "frame_reduction_total": 0,
         "graph_nodes_retrieved": 0,
+        "total_tokens": 0,
+        "total_image_payload_bytes": 0,
+        "cloud_calls": 0,
+        "fallback_counts": defaultdict(int),
+        "failure_counts": defaultdict(int),
         "services": defaultdict(int),
     })
 
@@ -31,6 +36,11 @@ def aggregate(limit: int = 200) -> dict:
             m["frame_reduction_total"] += (orig - sel) / orig
         m["graph_nodes_retrieved"] += log.get("retrieved_graph_nodes", 0)
         m["services"][log.get("selected_service", "unknown")] += 1
+        m["total_tokens"] += log.get("token_count", 0)
+        m["total_image_payload_bytes"] += log.get("image_payload_bytes", 0)
+        m["cloud_calls"] += int(log.get("cloud_called", False))
+        m["fallback_counts"][log.get("fallback_reason", "none")] += 1
+        m["failure_counts"][log.get("failure_type", "none")] += 1
 
     result: dict = {"total": len(logs), "by_mode": {}}
     for mode, m in by_mode.items():
@@ -42,5 +52,10 @@ def aggregate(limit: int = 200) -> dict:
             "avg_frame_reduction_ratio": round(m["frame_reduction_total"] / n, 3),
             "avg_graph_nodes": round(m["graph_nodes_retrieved"] / n, 1),
             "service_distribution": dict(m["services"]),
+            "avg_tokens": round(m["total_tokens"] / n),
+            "avg_image_payload_bytes": round(m["total_image_payload_bytes"] / n),
+            "cloud_call_ratio": round(m["cloud_calls"] / n, 3),
+            "fallback_distribution": dict(m["fallback_counts"]),
+            "failure_distribution": dict(m["failure_counts"]),
         }
     return result

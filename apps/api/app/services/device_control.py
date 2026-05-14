@@ -1,8 +1,8 @@
 """DeviceControl service."""
 
 from app.actions.executor import execute_device_action
-from app.schemas.agent import ActionResult
 from app.schemas.context import ContextRequest
+from app.services.common import ServiceRunResult
 
 
 async def run(
@@ -10,9 +10,9 @@ async def run(
     image_b64_list: list[str],
     graph_context: str,
     request_id: str,
-) -> tuple[str, bool, ActionResult | None]:
+) -> ServiceRunResult:
     if not ctx.nearby_devices:
-        return "No controllable nearby devices were provided.", False, None
+        return "No controllable nearby devices were provided.", False, None, {}
 
     target = ctx.nearby_devices[0]
     request_lower = ctx.user_request.lower()
@@ -28,4 +28,4 @@ async def run(
     else:
         response = f"Device control failed: {action_result.message}"
 
-    return response, False, action_result
+    return response, False, action_result, {}
