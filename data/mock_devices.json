@@ -1,0 +1,38 @@
+[
+  {
+    "device_id": "light-001",
+    "name": "거실 스마트 조명",
+    "type": "smart_light",
+    "supported_actions": ["turn_on", "turn_off", "set_brightness", "set_color"],
+    "risk_level": "low",
+    "requires_confirmation": false,
+    "state": { "power": "on", "brightness": 80 }
+  },
+  {
+    "device_id": "speaker-001",
+    "name": "블루투스 스피커",
+    "type": "speaker",
+    "supported_actions": ["play", "pause", "set_volume", "stop"],
+    "risk_level": "low",
+    "requires_confirmation": false,
+    "state": { "power": "off", "volume": 50 }
+  },
+  {
+    "device_id": "tv-001",
+    "name": "거실 TV",
+    "type": "tv",
+    "supported_actions": ["turn_on", "turn_off", "set_volume", "change_channel"],
+    "risk_level": "low",
+    "requires_confirmation": false,
+    "state": { "power": "off" }
+  },
+  {
+    "device_id": "ac-001",
+    "name": "에어컨",
+    "type": "air_conditioner",
+    "supported_actions": ["turn_on", "turn_off", "set_temperature", "set_mode"],
+    "risk_level": "medium",
+    "requires_confirmation": false,
+    "state": { "power": "off", "temperature": 26 }
+  }
+]

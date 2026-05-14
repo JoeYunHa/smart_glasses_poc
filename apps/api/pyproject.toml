@@ -1,0 +1,24 @@
+[project]
+name = "api"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiofiles>=25.1.0",
+    "fastapi[standard]>=0.136.1",
+    "groq>=0.13.0",
+    "networkx>=3.6.1",
+    "numpy>=2.4.4",
+    "opencv-python>=4.13.0.92",
+    "pydantic-settings>=2.9.1",
+    "python-multipart>=0.0.28",
+    "qdrant-client>=1.18.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "pytest>=9.0.3",
+    "ruff>=0.15.12",
+]

@@ -1,0 +1,58 @@
+[
+  {
+    "id": "demo1-safety",
+    "title": "Demo 1: Safety Alert",
+    "description": "횡단보도 이미지 + 도로 GPS + 위험 질의",
+    "context": {
+      "user_request": "지금 건너도 괜찮아?",
+      "gps": {
+        "latitude": 37.5665,
+        "longitude": 126.9780,
+        "location_type": "crosswalk",
+        "place_name": "광화문 교차로"
+      },
+      "nearby_devices": [],
+      "mode": "optimized"
+    },
+    "expected_service": "safety_alert"
+  },
+  {
+    "id": "demo2-device",
+    "title": "Demo 2: Device Control",
+    "description": "방 이미지 + 주변 기기 + 제어 요청",
+    "context": {
+      "user_request": "거실 조명 꺼줘",
+      "gps": null,
+      "nearby_devices": [
+        {
+          "device_id": "light-001",
+          "name": "거실 스마트 조명",
+          "type": "smart_light",
+          "supported_actions": ["turn_on", "turn_off", "set_brightness"],
+          "risk_level": "low",
+          "requires_confirmation": false,
+          "state": { "power": "on" }
+        }
+      ],
+      "mode": "optimized"
+    },
+    "expected_service": "device_control"
+  },
+  {
+    "id": "demo3-memory",
+    "title": "Demo 3: Context Memory (GraphRAG)",
+    "description": "과거 장소를 기억해 재방문 길 안내",
+    "context": {
+      "user_request": "아까 본 카페 쪽으로 다시 가려면 어떻게 해?",
+      "gps": {
+        "latitude": 37.5700,
+        "longitude": 126.9820,
+        "location_type": "street",
+        "place_name": "삼청동 거리"
+      },
+      "nearby_devices": [],
+      "mode": "optimized"
+    },
+    "expected_service": "context_memory"
+  }
+]
