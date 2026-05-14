@@ -17,7 +17,7 @@ export default function OutputPanel({ response }: Props) {
   if (!response) {
     return (
       <div className="bg-gray-900 rounded-xl p-5 border border-gray-700 flex items-center justify-center h-32">
-        <p className="text-gray-500 text-sm">응답 결과가 여기에 표시됩니다</p>
+        <p className="text-gray-500 text-sm">Response output will appear here.</p>
       </div>
     );
   }
@@ -28,18 +28,16 @@ export default function OutputPanel({ response }: Props) {
     <div className="bg-gray-900 rounded-xl p-5 border border-gray-700 space-y-4">
       <div className="flex items-center gap-2">
         {icon}
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">출력</h2>
+        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Output</h2>
         <span className="ml-auto text-xs text-gray-500 font-mono">{response.mode}</span>
       </div>
 
-      {/* Voice response */}
       <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
         <p className="text-sm text-gray-100 leading-relaxed whitespace-pre-wrap">
           {response.response_text}
         </p>
       </div>
 
-      {/* Action result */}
       {response.action_result && (
         <div
           className={`flex items-start gap-3 p-3 rounded-lg border ${
@@ -55,14 +53,14 @@ export default function OutputPanel({ response }: Props) {
           )}
           <div>
             <p className="text-xs font-medium text-gray-300">
-              {response.action_result.device_id} — {response.action_result.action}
+              {response.action_result.device_id} / {response.action_result.action}
             </p>
             <p className="text-xs text-gray-400 mt-0.5">{response.action_result.message}</p>
           </div>
         </div>
       )}
 
-      <p className="text-xs text-gray-600 font-mono">req: {response.request_id.slice(0, 8)}…</p>
+      <p className="text-xs text-gray-600 font-mono">req: {response.request_id.slice(0, 8)}</p>
     </div>
   );
 }

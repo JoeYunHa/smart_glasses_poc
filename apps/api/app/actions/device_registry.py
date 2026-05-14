@@ -1,8 +1,4 @@
-"""Device capability registry.
-
-Maps device type → allowed actions with risk metadata.
-Used by the guardrail before any action is dispatched.
-"""
+"""Device capability registry."""
 
 from dataclasses import dataclass, field
 
@@ -50,19 +46,23 @@ def get_capability(device_type: str) -> DeviceCapability | None:
 
 
 def infer_action(user_request: str, supported_actions: list[str]) -> str:
-    """Map Korean request keywords to a supported action name."""
+    """Map user request keywords to a supported action name."""
+    request_lower = user_request.lower()
     mapping: list[tuple[list[str], str]] = [
-        (["켜", "켜줘", "on"], "turn_on"),
-        (["꺼", "꺼줘", "off"], "turn_off"),
-        (["볼륨", "소리"], "set_volume"),
-        (["밝기"], "set_brightness"),
-        (["틀어", "재생", "play"], "play"),
-        (["일시정지", "멈춰"], "pause"),
-        (["잠가", "잠금"], "lock"),
-        (["열어", "열어줘"], "unlock"),
-        (["온도", "temperature"], "set_temperature"),
+        (["turn on", "switch on", "start"], "turn_on"),
+        (["turn off", "switch off", "stop"], "turn_off"),
+        (["volume", "louder", "quieter"], "set_volume"),
+        (["brightness", "brighter", "dimmer"], "set_brightness"),
+        (["play"], "play"),
+        (["pause", "hold"], "pause"),
+        (["lock"], "lock"),
+        (["unlock", "open"], "unlock"),
+        (["temperature", "cooler", "warmer"], "set_temperature"),
+        (["color"], "set_color"),
+        (["mode"], "set_mode"),
+        (["channel"], "change_channel"),
     ]
     for keywords, action in mapping:
-        if action in supported_actions and any(kw in user_request for kw in keywords):
+        if action in supported_actions and any(kw in request_lower for kw in keywords):
             return action
     return supported_actions[0] if supported_actions else "turn_off"

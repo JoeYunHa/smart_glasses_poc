@@ -63,3 +63,11 @@ def find_scenes_by_keyword(keyword: str) -> list[dict]:
 
 def graph_size() -> int:
     return _graph.number_of_nodes()
+
+
+def edge_size() -> int:
+    return _graph.number_of_edges()
+
+
+def reset_graph() -> None:
+    _graph.clear()

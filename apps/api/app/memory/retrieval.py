@@ -5,7 +5,7 @@ from app.memory import graph_store, vector_store
 
 def store_context(request_id: str, user_request: str, service_name: str, summary: str) -> None:
     """Persist context text in vector store for future retrieval."""
-    text = f"[{service_name}] {user_request} → {summary}"
+    text = f"[{service_name}] {user_request} :: {summary}"
     vector_store.upsert(text, payload={"request_id": request_id, "service": service_name})
 
 

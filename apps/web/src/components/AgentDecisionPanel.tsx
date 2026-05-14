@@ -18,7 +18,7 @@ export default function AgentDecisionPanel({ response }: Props) {
   if (!response) {
     return (
       <div className="bg-gray-900 rounded-xl p-5 border border-gray-700 flex items-center justify-center h-32">
-        <p className="text-gray-500 text-sm">Agent 실행 결과가 여기에 표시됩니다</p>
+        <p className="text-gray-500 text-sm">Run the agent to inspect the pipeline decision.</p>
       </div>
     );
   }
@@ -30,10 +30,9 @@ export default function AgentDecisionPanel({ response }: Props) {
     <div className="bg-gray-900 rounded-xl p-5 border border-gray-700 space-y-4">
       <div className="flex items-center gap-2">
         <Brain className="w-4 h-4 text-purple-400" />
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Agent 판단</h2>
+        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Agent Decision</h2>
       </div>
 
-      {/* Pipeline steps */}
       <div className="flex items-center gap-1.5 text-xs text-gray-500 flex-wrap">
         {["Perception", "GraphRAG", "Router", "Service", "Log"].map((step, i, arr) => (
           <span key={step} className="flex items-center gap-1">
@@ -43,32 +42,32 @@ export default function AgentDecisionPanel({ response }: Props) {
         ))}
       </div>
 
-      {/* Service badge */}
       <div className="flex items-center gap-3">
         <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${svc.color}`}>
           {svc.label}
         </span>
         <span className="text-xs text-gray-400">
-          신뢰도 <span className="text-white font-mono">{confidencePct}%</span>
+          Confidence <span className="text-white font-mono">{confidencePct}%</span>
         </span>
         {response.vlm_used && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-orange-900/40 border border-orange-700 text-orange-400">
-            VLM 사용
+            VLM used
           </span>
         )}
       </div>
 
-      {/* Stats row */}
       <div className="grid grid-cols-3 gap-3">
-        <StatBox label="원본 프레임" value={response.original_frame_count} />
-        <StatBox label="키프레임" value={response.selected_keyframe_count} highlight />
-        <StatBox label="그래프 노드" value={response.retrieved_graph_nodes} />
+        <StatBox label="Input Frames" value={response.original_frame_count} />
+        <StatBox label="Keyframes" value={response.selected_keyframe_count} highlight />
+        <StatBox label="Graph Nodes" value={response.retrieved_graph_nodes} />
       </div>
 
-      {/* Latency */}
       <div className="space-y-1.5">
-        <p className="text-xs text-gray-500">레이턴시</p>
+        <p className="text-xs text-gray-500">Latency Breakdown</p>
         <LatencyBar label="Frame" ms={response.latency_ms.frame_sampling} total={response.latency_ms.total} color="bg-indigo-500" />
+        {response.mode === "optimized" && (
+          <LatencyBar label="Keyframe" ms={response.latency_ms.keyframe_selection} total={response.latency_ms.total} color="bg-cyan-500" />
+        )}
         <LatencyBar label="Graph" ms={response.latency_ms.graph_retrieval} total={response.latency_ms.total} color="bg-emerald-500" />
         <LatencyBar label="Router" ms={response.latency_ms.routing} total={response.latency_ms.total} color="bg-purple-500" />
         <LatencyBar label="VLM" ms={response.latency_ms.vlm} total={response.latency_ms.total} color="bg-orange-500" />

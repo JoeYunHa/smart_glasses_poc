@@ -83,3 +83,7 @@ def search(query: str, top_k: int = 5) -> list[str]:
     else:
         scored = sorted(_memory_store, key=lambda item: _cosine(vec, item[0]), reverse=True)
         return [text for _, text in scored[:top_k]]
+
+
+def reset_memory_store() -> None:
+    _memory_store.clear()

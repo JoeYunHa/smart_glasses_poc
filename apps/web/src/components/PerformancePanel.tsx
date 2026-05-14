@@ -19,7 +19,9 @@ export default function PerformancePanel() {
     }
   }, []);
 
-  useEffect(() => { void fetch(); }, [fetch]);
+  useEffect(() => {
+    void fetch();
+  }, [fetch]);
 
   const modes = metrics ? Object.entries(metrics.by_mode) : [];
 
@@ -27,7 +29,7 @@ export default function PerformancePanel() {
     <div className="bg-gray-900 rounded-xl p-5 border border-gray-700 space-y-4">
       <div className="flex items-center gap-2">
         <BarChart3 className="w-4 h-4 text-purple-400" />
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">성능 지표</h2>
+        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Performance Metrics</h2>
         <button
           onClick={() => void fetch()}
           className="ml-auto text-gray-500 hover:text-gray-300 transition-colors"
@@ -37,22 +39,22 @@ export default function PerformancePanel() {
       </div>
 
       {!metrics || metrics.total === 0 ? (
-        <p className="text-gray-500 text-xs">아직 실행 기록이 없습니다</p>
+        <p className="text-gray-500 text-xs">No evaluation runs logged yet.</p>
       ) : (
         <>
-          <p className="text-xs text-gray-500">총 요청: <span className="text-white font-mono">{metrics.total}</span></p>
+          <p className="text-xs text-gray-500">Total requests: <span className="text-white font-mono">{metrics.total}</span></p>
 
           <div className="grid grid-cols-1 gap-3">
             {modes.map(([mode, m]) => (
               <div key={mode} className="bg-gray-800 rounded-lg p-3 space-y-2">
                 <p className={`text-xs font-semibold ${mode === "optimized" ? "text-purple-400" : "text-gray-400"}`}>
-                  {mode.toUpperCase()} ({m.count}회)
+                  {mode.toUpperCase()} ({m.count})
                 </p>
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <Metric label="평균 레이턴시" value={`${m.avg_latency_ms}ms`} />
-                  <Metric label="VLM 호출/요청" value={m.avg_vlm_calls.toFixed(2)} />
-                  <Metric label="프레임 감소율" value={`${(m.avg_frame_reduction_ratio * 100).toFixed(0)}%`} highlight />
-                  <Metric label="그래프 노드/요청" value={m.avg_graph_nodes.toFixed(1)} />
+                  <Metric label="Average latency" value={`${m.avg_latency_ms}ms`} />
+                  <Metric label="VLM calls / req" value={m.avg_vlm_calls.toFixed(2)} />
+                  <Metric label="Frame reduction" value={`${(m.avg_frame_reduction_ratio * 100).toFixed(0)}%`} highlight />
+                  <Metric label="Graph nodes / req" value={m.avg_graph_nodes.toFixed(1)} />
                 </div>
                 {Object.entries(m.service_distribution).length > 0 && (
                   <div className="flex flex-wrap gap-1 pt-1">
@@ -93,14 +95,14 @@ function ComparisonBar({ baseline, optimized }: { baseline: number; optimized: n
   const saved = Math.round(((baseline - optimized) / baseline) * 100);
   return (
     <div className="bg-gray-800 rounded-lg p-3">
-      <p className="text-xs text-gray-400 mb-2">Baseline vs Optimized 레이턴시 비교</p>
+      <p className="text-xs text-gray-400 mb-2">Baseline vs Optimized latency</p>
       <div className="space-y-1.5">
         <BarRow label="Baseline" ms={baseline} max={Math.max(baseline, optimized)} color="bg-gray-500" />
         <BarRow label="Optimized" ms={optimized} max={Math.max(baseline, optimized)} color="bg-purple-500" />
       </div>
       {saved > 0 && (
         <p className="text-xs text-emerald-400 mt-2 font-medium">
-          Optimized가 {saved}% 빠름
+          Optimized is {saved}% faster
         </p>
       )}
     </div>

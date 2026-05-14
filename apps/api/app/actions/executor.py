@@ -1,8 +1,4 @@
-"""Mock action executor.
-
-Simulates device control without real IoT integration.
-All outcomes are logged for demo purposes.
-"""
+"""Mock action executor."""
 
 from app.actions.device_registry import get_capability, infer_action
 from app.agent.policy import check_action_allowed
@@ -17,7 +13,7 @@ def execute_device_action(device: DeviceInfo, user_request: str) -> ActionResult
             device_id=device.device_id,
             action="unknown",
             success=False,
-            message=f"기기 유형 '{device.type}'을 인식할 수 없습니다.",
+            message=f"Unsupported device type: {device.type}.",
         )
 
     action = infer_action(user_request, cap.supported_actions)
@@ -30,10 +26,9 @@ def execute_device_action(device: DeviceInfo, user_request: str) -> ActionResult
             message=reason,
         )
 
-    # Mock execution — always succeeds if guardrail passes
     return ActionResult(
         device_id=device.device_id,
         action=action,
         success=True,
-        message=f"[MOCK] {device.name}: '{action}' 실행 완료",
+        message=f"[MOCK] Executed '{action}' on {device.name}.",
     )

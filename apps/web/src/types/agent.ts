@@ -59,7 +59,7 @@ export interface AgentResponse {
   selected_keyframe_count: number;
   retrieved_graph_nodes: number;
   latency_ms: LatencyBreakdown;
-  mode: string;
+  mode: AgentMode;
 }
 
 export interface GraphNode {

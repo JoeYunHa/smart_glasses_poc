@@ -28,11 +28,16 @@ export default function GraphContextPanel() {
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (!query.trim()) { setResults(null); return; }
+    if (!query.trim()) {
+      setResults(null);
+      return;
+    }
     const data = await queryGraph(query);
     setResults(data.results);
   }
@@ -54,7 +59,7 @@ export default function GraphContextPanel() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="키워드 검색 (예: 카페, 조명)"
+          placeholder="Search by keyword, for example cafe or light"
           className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-purple-500"
         />
         <button type="submit" className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors">
@@ -62,13 +67,13 @@ export default function GraphContextPanel() {
         </button>
         {results && (
           <button type="button" onClick={() => setResults(null)} className="text-xs text-gray-500 hover:text-gray-300 px-2">
-            전체
+            Reset
           </button>
         )}
       </form>
 
       {displayNodes.length === 0 ? (
-        <p className="text-gray-500 text-xs">그래프에 노드가 없습니다. Agent를 실행하면 scene이 저장됩니다.</p>
+        <p className="text-gray-500 text-xs">No nodes stored yet. Run the agent to populate scene memory.</p>
       ) : (
         <div className="space-y-1.5 max-h-64 overflow-y-auto">
           {displayNodes.map((node) => {

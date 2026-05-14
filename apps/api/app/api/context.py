@@ -5,7 +5,10 @@ from app.memory import graph_store
 router = APIRouter()
 
 
-@router.get("/graph-size")
-async def get_graph_size():
-    """현재 scene graph에 저장된 노드 수를 반환한다."""
-    return {"node_count": graph_store.graph_size()}
+@router.get("/summary")
+async def get_context_summary():
+    """Return a brief summary of current stored context state."""
+    return {
+        "graph_node_count": graph_store.graph_size(),
+        "graph_edge_count": graph_store.edge_size(),
+    }

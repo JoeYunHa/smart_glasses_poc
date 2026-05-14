@@ -1,11 +1,6 @@
-"""DeviceControl service.
-
-Matches user intent to a nearby device, runs guardrail,
-and dispatches mock action execution.
-"""
+"""DeviceControl service."""
 
 from app.actions.executor import execute_device_action
-from app.groq_client import call_vlm
 from app.schemas.agent import ActionResult
 from app.schemas.context import ContextRequest
 
@@ -17,20 +12,20 @@ async def run(
     request_id: str,
 ) -> tuple[str, bool, ActionResult | None]:
     if not ctx.nearby_devices:
-        return "근처에 제어 가능한 기기가 없습니다.", False, None
+        return "No controllable nearby devices were provided.", False, None
 
-    # Simple heuristic: pick first device that matches request keywords
     target = ctx.nearby_devices[0]
+    request_lower = ctx.user_request.lower()
     for dev in ctx.nearby_devices:
-        if dev.name in ctx.user_request or dev.type in ctx.user_request:
+        if dev.name.lower() in request_lower or dev.type.lower() in request_lower:
             target = dev
             break
 
     action_result = execute_device_action(target, ctx.user_request)
 
     if action_result.success:
-        response = f"{target.name}: {action_result.action} 완료했습니다."
+        response = f"{target.name}: {action_result.action} completed."
     else:
-        response = f"기기 제어 실패: {action_result.message}"
+        response = f"Device control failed: {action_result.message}"
 
     return response, False, action_result

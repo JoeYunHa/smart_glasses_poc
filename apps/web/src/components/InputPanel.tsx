@@ -5,7 +5,7 @@ import type { AgentMode, ContextRequest, DeviceInfo, GpsContext } from "@/types/
 const DEFAULT_DEVICES: DeviceInfo[] = [
   {
     device_id: "light-001",
-    name: "거실 스마트 조명",
+    name: "Living Room Light",
     type: "smart_light",
     supported_actions: ["turn_on", "turn_off", "set_brightness"],
     risk_level: "low",
@@ -14,7 +14,7 @@ const DEFAULT_DEVICES: DeviceInfo[] = [
   },
   {
     device_id: "speaker-001",
-    name: "블루투스 스피커",
+    name: "Bluetooth Speaker",
     type: "speaker",
     supported_actions: ["play", "pause", "set_volume"],
     risk_level: "low",
@@ -24,10 +24,26 @@ const DEFAULT_DEVICES: DeviceInfo[] = [
 ];
 
 const QUICK_SCENARIOS = [
-  { label: "안전 경보", request: "지금 건너도 괜찮아?", gps: { latitude: 37.5665, longitude: 126.978, location_type: "crosswalk", place_name: "광화문 교차로" } },
-  { label: "기기 제어", request: "거실 조명 꺼줘", gps: null },
-  { label: "장면 설명", request: "여기 뭐가 있어?", gps: null },
-  { label: "기억 검색", request: "아까 본 카페 다시 가려면?", gps: { latitude: 37.57, longitude: 126.982, location_type: "street", place_name: "삼청동" } },
+  {
+    label: "Safety Alert",
+    request: "Is it safe to cross right now?",
+    gps: { latitude: 37.5665, longitude: 126.978, location_type: "crosswalk", place_name: "Gwanghwamun Intersection" },
+  },
+  {
+    label: "Device Control",
+    request: "Turn off the living room light",
+    gps: null,
+  },
+  {
+    label: "Scene Assistant",
+    request: "What do you see here?",
+    gps: null,
+  },
+  {
+    label: "Context Memory",
+    request: "Which cafe did I look at earlier?",
+    gps: { latitude: 37.57, longitude: 126.982, location_type: "street", place_name: "Seoul City Hall" },
+  },
 ];
 
 interface Props {
@@ -48,18 +64,20 @@ export default function InputPanel({ onSubmit, loading }: Props) {
   function applyScenario(s: (typeof QUICK_SCENARIOS)[0]) {
     setRequest(s.request);
     setGps(s.gps ?? null);
-    if (s.label === "기기 제어") setUseDevices(true);
+    setUseDevices(s.label === "Device Control");
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!request.trim()) return;
+
     const ctx: ContextRequest = {
       user_request: request,
       gps,
       nearby_devices: useDevices ? DEFAULT_DEVICES : [],
       mode,
     };
+
     onSubmit(ctx, imageFile ?? undefined, videoFile ?? undefined);
   }
 
@@ -67,10 +85,9 @@ export default function InputPanel({ onSubmit, loading }: Props) {
     <form onSubmit={handleSubmit} className="bg-gray-900 rounded-xl p-5 space-y-4 border border-gray-700">
       <div className="flex items-center gap-2 mb-1">
         <Mic className="w-4 h-4 text-purple-400" />
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">입력 패널</h2>
+        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Input Panel</h2>
       </div>
 
-      {/* Quick scenarios */}
       <div className="flex flex-wrap gap-2">
         {QUICK_SCENARIOS.map((s) => (
           <button
@@ -84,20 +101,18 @@ export default function InputPanel({ onSubmit, loading }: Props) {
         ))}
       </div>
 
-      {/* User request */}
       <div>
-        <label className="block text-xs text-gray-400 mb-1">사용자 요청</label>
+        <label className="block text-xs text-gray-400 mb-1">Request</label>
         <input
           value={request}
           onChange={(e) => setRequest(e.target.value)}
-          placeholder="예: 지금 건너도 괜찮아? / 조명 꺼줘"
+          placeholder="Ask about a scene, route, safety risk, or nearby device"
           className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-purple-500"
         />
       </div>
 
-      {/* Mode toggle */}
       <div className="flex items-center gap-3">
-        <span className="text-xs text-gray-400">모드:</span>
+        <span className="text-xs text-gray-400">Mode:</span>
         {(["optimized", "baseline"] as AgentMode[]).map((m) => (
           <button
             key={m}
@@ -114,23 +129,21 @@ export default function InputPanel({ onSubmit, loading }: Props) {
         ))}
       </div>
 
-      {/* GPS */}
       <div className="flex items-center gap-2">
         <MapPin className="w-4 h-4 text-gray-500" />
         <button
           type="button"
           onClick={() =>
-            setGps(gps ? null : { latitude: 37.5665, longitude: 126.978, location_type: "crosswalk", place_name: "광화문" })
+            setGps(gps ? null : { latitude: 37.5665, longitude: 126.978, location_type: "crosswalk", place_name: "Gwanghwamun" })
           }
           className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
             gps ? "bg-emerald-900 border-emerald-600 text-emerald-300" : "bg-gray-800 border-gray-600 text-gray-400"
           }`}
         >
-          {gps ? `GPS: ${gps.place_name}` : "GPS 없음"}
+          {gps ? `GPS: ${gps.place_name}` : "GPS disabled"}
         </button>
       </div>
 
-      {/* Devices */}
       <div className="flex items-center gap-2">
         <MonitorSmartphone className="w-4 h-4 text-gray-500" />
         <button
@@ -140,11 +153,10 @@ export default function InputPanel({ onSubmit, loading }: Props) {
             useDevices ? "bg-blue-900 border-blue-600 text-blue-300" : "bg-gray-800 border-gray-600 text-gray-400"
           }`}
         >
-          {useDevices ? `주변 기기 ${DEFAULT_DEVICES.length}개 활성` : "주변 기기 없음"}
+          {useDevices ? `Nearby devices: ${DEFAULT_DEVICES.length}` : "Nearby devices: off"}
         </button>
       </div>
 
-      {/* File uploads */}
       <div className="flex gap-3">
         <button
           type="button"
@@ -154,9 +166,18 @@ export default function InputPanel({ onSubmit, loading }: Props) {
           }`}
         >
           <ImageIcon className="w-3 h-3" />
-          {imageFile ? imageFile.name.slice(0, 16) + "…" : "이미지 업로드"}
+          {imageFile ? imageFile.name : "Upload image"}
         </button>
-        <input ref={imageRef} type="file" accept="image/*" className="hidden" onChange={(e) => { setImageFile(e.target.files?.[0] ?? null); setVideoFile(null); }} />
+        <input
+          ref={imageRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            setImageFile(e.target.files?.[0] ?? null);
+            setVideoFile(null);
+          }}
+        />
 
         <button
           type="button"
@@ -166,9 +187,18 @@ export default function InputPanel({ onSubmit, loading }: Props) {
           }`}
         >
           <Video className="w-3 h-3" />
-          {videoFile ? videoFile.name.slice(0, 16) + "…" : "영상 업로드"}
+          {videoFile ? videoFile.name : "Upload video"}
         </button>
-        <input ref={videoRef} type="file" accept="video/*" className="hidden" onChange={(e) => { setVideoFile(e.target.files?.[0] ?? null); setImageFile(null); }} />
+        <input
+          ref={videoRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={(e) => {
+            setVideoFile(e.target.files?.[0] ?? null);
+            setImageFile(null);
+          }}
+        />
       </div>
 
       <button
@@ -176,7 +206,7 @@ export default function InputPanel({ onSubmit, loading }: Props) {
         disabled={loading || !request.trim()}
         className="w-full py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium transition-colors"
       >
-        {loading ? "처리 중…" : "Agent 실행"}
+        {loading ? "Running..." : "Run Agent"}
       </button>
     </form>
   );

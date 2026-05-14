@@ -6,7 +6,10 @@ from app.api import agent, context, graph, logs
 app = FastAPI(
     title="Smart Glasses Physical AI Agent",
     version="0.1.0",
-    description="PoC — 입력 → 전처리 → 판단 → 행동 → 로그 → 개선 파이프라인",
+    description=(
+        "PoC API for a smart-glasses-style physical AI agent with perception, "
+        "routing, action execution, and evaluation logging."
+    ),
 )
 
 app.add_middleware(
