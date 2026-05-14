@@ -74,12 +74,12 @@ def upsert(text: str, payload: dict | None = None) -> None:
 def search(query: str, top_k: int = 5) -> list[str]:
     vec = _text_to_vector(query)
     if _qdrant is not None:
-        hits = _qdrant.search(
+        result = _qdrant.query_points(
             collection_name=settings.qdrant_collection,
-            query_vector=vec,
+            query=vec,
             limit=top_k,
         )
-        return [h.payload.get("text", "") for h in hits if h.payload]
+        return [h.payload.get("text", "") for h in result.points if h.payload]
     else:
         scored = sorted(_memory_store, key=lambda item: _cosine(vec, item[0]), reverse=True)
         return [text for _, text in scored[:top_k]]
