@@ -15,6 +15,19 @@ from app.perception.keyframe_selector import select_keyframes
 from app.schemas.agent import LatencyBreakdown
 from app.schemas.context import AgentMode, ContextRequest
 
+# Keywords that trigger the enhanced label OCR pipeline in perception.
+# Mirrors router._RULES label_reader keywords so mode selection is consistent.
+_LABEL_KEYWORDS: frozenset[str] = frozenset({
+    "label", "medicine", "drug", "pill", "medication",
+    "ingredient", "dosage", "expiry", "prescription",
+    "라벨", "약", "의약품", "성분", "복용", "유효기간", "읽어줘", "읽어",
+})
+
+
+def _is_label_request(user_request: str) -> bool:
+    lower = user_request.lower()
+    return any(kw in lower for kw in _LABEL_KEYWORDS)
+
 
 @dataclass
 class PerceptionResult:
@@ -23,6 +36,7 @@ class PerceptionResult:
     selected_keyframe_count: int
     frame_sampling_ms: int
     keyframe_selection_ms: int
+    semantic_prompt: str = ""       # text-only VLM prompt built from SemanticPayloads
 
 
 @dataclass
@@ -40,7 +54,10 @@ def run_perception(
     video_bytes: bytes | None,
     mode: AgentMode,
     now_ms: Callable[[], int],
+    user_request: str = "",
 ) -> PerceptionResult:
+    from app.perception.semantic_extractor import SemanticPayload, build_semantic_prompt, extract_semantic
+
     t0 = now_ms()
     keyframes: list[np.ndarray] = []
     original_frame_count = 0
@@ -54,34 +71,56 @@ def run_perception(
         original_frame_count = len(frames)
         if mode == AgentMode.optimized:
             t_keyframes = now_ms()
-            keyframes = select_keyframes(frames, max_keyframes=settings.max_keyframes)
+            keyframes = select_keyframes(
+                frames,
+                max_keyframes=settings.max_keyframes,
+                user_request=user_request,
+            )
             keyframe_selection_ms = now_ms() - t_keyframes
         else:
-            keyframes = frames
+            # Baseline: scene-change-only selection (no query-aware scoring).
+            # fps_target=None above means all frames are sampled; this caps at max_keyframes.
+            keyframes = select_keyframes(frames, max_keyframes=settings.max_keyframes)
         selected_keyframe_count = len(keyframes)
         image_b64_list = [frame_to_b64(frame) for frame in keyframes]
+
+        semantic_prompt = ""
+        if mode == AgentMode.optimized and keyframes:
+            extract_mode = "label" if _is_label_request(user_request) else "general"
+            prev = None
+            payloads: list[SemanticPayload] = []
+            for frame in keyframes:
+                payloads.append(extract_semantic(frame, prev, mode=extract_mode))
+                prev = frame
+            semantic_prompt = build_semantic_prompt(payloads, user_request)
+
         return PerceptionResult(
             image_b64_list=image_b64_list,
             original_frame_count=original_frame_count,
             selected_keyframe_count=selected_keyframe_count,
             frame_sampling_ms=frame_sampling_ms,
             keyframe_selection_ms=keyframe_selection_ms,
+            semantic_prompt=semantic_prompt,
         )
 
     if image_bytes:
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if img is not None:
-            keyframes = [img]
-        original_frame_count = 1
-        selected_keyframe_count = 1
         frame_sampling_ms = now_ms() - t0
+
+        semantic_prompt = ""
+        if mode == AgentMode.optimized and img is not None:
+            extract_mode = "label" if _is_label_request(user_request) else "general"
+            payload = extract_semantic(img, mode=extract_mode)
+            semantic_prompt = build_semantic_prompt([payload], user_request)
+
         return PerceptionResult(
             image_b64_list=[preprocess_image_bytes(image_bytes)],
-            original_frame_count=original_frame_count,
-            selected_keyframe_count=selected_keyframe_count,
+            original_frame_count=1,
+            selected_keyframe_count=1,
             frame_sampling_ms=frame_sampling_ms,
-            keyframe_selection_ms=keyframe_selection_ms,
+            keyframe_selection_ms=0,
+            semantic_prompt=semantic_prompt,
         )
 
     frame_sampling_ms = now_ms() - t0
@@ -91,6 +130,7 @@ def run_perception(
         selected_keyframe_count=0,
         frame_sampling_ms=frame_sampling_ms,
         keyframe_selection_ms=0,
+        semantic_prompt="",
     )
 
 
@@ -112,7 +152,7 @@ async def route_service(
 
         routing_prompt = (
             "Classify the following request as exactly one of these services:\n"
-            "scene_assistant, navigation, device_control, safety_alert, context_memory\n"
+            "scene_assistant, navigation, device_control, safety_alert, context_memory, label_reader\n"
             "Return only the service name.\n\n"
             f"Request: {ctx.user_request}"
         )
@@ -130,6 +170,7 @@ async def route_service(
             fallback_reason = "low_confidence" if matched else "parse_error"
         except Exception:
             vlm_used = True
+            vlm_call_count = 1
             fallback_reason = "vlm_timeout"
 
     return (

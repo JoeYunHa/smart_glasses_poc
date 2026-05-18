@@ -8,6 +8,7 @@ class ServiceType(str, Enum):
     device_control = "device_control"
     safety_alert = "safety_alert"
     context_memory = "context_memory"
+    label_reader = "label_reader"
     unknown = "unknown"
 
 

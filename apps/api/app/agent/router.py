@@ -8,6 +8,16 @@ _RULES: list[tuple[list[str], list[str], float, str]] = [
         "safety_alert",
     ),
     (
+        [
+            "read label", "label", "medicine", "drug", "pill", "medication",
+            "ingredient", "dosage", "expiry", "prescription",
+            "라벨", "약", "의약품", "성분", "복용", "유효기간", "읽어줘", "읽어",
+        ],
+        [],
+        0.88,
+        "label_reader",
+    ),
+    (
         ["turn on", "turn off", "switch", "volume", "brightness", "device", "control", "play", "pause"],
         [],
         0.85,

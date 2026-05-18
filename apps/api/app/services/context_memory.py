@@ -10,14 +10,20 @@ async def run(
     image_b64_list: list[str],
     graph_context: str,
     request_id: str,
+    semantic_prompt: str = "",
 ) -> ServiceRunResult:
-    retrieval_result = retrieve_context(ctx.user_request, top_k=5)
-    similar = retrieval_result.combined
+    # Use planner's already-retrieved graph_context to avoid a duplicate retrieval call.
+    # Only fall back to a fresh retrieval when graph_context is empty (e.g. baseline mode
+    # or first request with no prior stored context).
+    if graph_context:
+        memory_text = graph_context
+    else:
+        retrieval_result = retrieve_context(ctx.user_request, top_k=5)
+        similar = retrieval_result.combined
+        if not similar:
+            return "No relevant prior memory was found for this request.", False, None, {}
+        memory_text = "\n".join(f"- {s}" for s in similar)
 
-    if not similar:
-        return "No relevant prior memory was found for this request.", False, None, {}
-
-    memory_text = "\n".join(f"- {s}" for s in similar)
     prompt = (
         "You are a memory retrieval assistant for smart glasses. "
         "Use the past context below to answer the user's question in 2-3 concise sentences.\n\n"

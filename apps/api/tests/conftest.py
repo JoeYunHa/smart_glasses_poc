@@ -75,7 +75,9 @@ def stub_vlm(monkeypatch):
         prompt: str, image_b64: str | None = None, max_tokens: int = 512
     ) -> tuple[str, dict]:
         prompt_lower = prompt.lower()
-        if "scene_assistant, navigation, device_control, safety_alert, context_memory" in prompt_lower:
+        if "scene_assistant, navigation, device_control, safety_alert, context_memory, label_reader" in prompt_lower:
+            if "label" in prompt_lower or "medicine" in prompt_lower or "dosage" in prompt_lower:
+                return "label_reader", FAKE_USAGE
             if "turn off" in prompt_lower or "light" in prompt_lower:
                 return "device_control", FAKE_USAGE
             if "safe" in prompt_lower or "cross" in prompt_lower:
@@ -91,7 +93,8 @@ def stub_vlm(monkeypatch):
             return "Head straight for one block and turn left.", FAKE_USAGE
         if "memory" in prompt_lower:
             return "You previously looked at a cafe near city hall.", FAKE_USAGE
-            return "There is a street scene with pedestrians nearby.", FAKE_USAGE
+        # Default: covers semantic prompts ("[Frame N]" format) and other unmatched cases
+        return "There is a street scene with pedestrians nearby.", FAKE_USAGE
 
     monkeypatch.setattr("app.groq_client.call_vlm", fake_call_vlm)
 

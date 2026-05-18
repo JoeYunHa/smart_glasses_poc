@@ -4,8 +4,8 @@ from app.schemas.context import ContextRequest
 from app.services.common import (
     ServiceRunResult,
     append_optional_context,
+    dispatch,
     first_image_or_none,
-    run_vlm_service,
 )
 
 _SYSTEM_PROMPT = (
@@ -19,10 +19,12 @@ async def run(
     image_b64_list: list[str],
     graph_context: str,
     request_id: str,
+    semantic_prompt: str = "",
 ) -> ServiceRunResult:
-    if not image_b64_list:
+    if not image_b64_list and not semantic_prompt:
         return "No image was provided, so the scene cannot be described.", False, None, {}
 
-    prompt = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
-    prompt = append_optional_context(prompt, "Relevant prior context", graph_context)
-    return await run_vlm_service(prompt, image_b64=first_image_or_none(image_b64_list))
+    baseline_prompt = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
+    baseline_prompt = append_optional_context(baseline_prompt, "Relevant prior context", graph_context)
+
+    return await dispatch(semantic_prompt, baseline_prompt, first_image_or_none(image_b64_list))

@@ -4,6 +4,7 @@ export type ServiceType =
   | "device_control"
   | "safety_alert"
   | "context_memory"
+  | "label_reader"
   | "unknown";
 
 export type AgentMode = "baseline" | "optimized";
@@ -68,17 +69,21 @@ export interface GraphNode {
   [key: string]: unknown;
 }
 
+export interface ModeMetrics {
+  count: number;
+  avg_latency_ms: number;
+  avg_vlm_calls: number;
+  avg_frame_reduction_ratio: number;
+  avg_graph_nodes: number;
+  service_distribution: Record<string, number>;
+  avg_tokens: number;
+  avg_image_payload_bytes: number;
+  cloud_call_ratio: number;
+  fallback_distribution: Record<string, number>;
+  failure_distribution: Record<string, number>;
+}
+
 export interface MetricsData {
   total: number;
-  by_mode: Record<
-    string,
-    {
-      count: number;
-      avg_latency_ms: number;
-      avg_vlm_calls: number;
-      avg_frame_reduction_ratio: number;
-      avg_graph_nodes: number;
-      service_distribution: Record<string, number>;
-    }
-  >;
+  by_mode: Record<string, ModeMetrics>;
 }

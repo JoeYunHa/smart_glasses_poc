@@ -10,6 +10,7 @@ async def run(
     image_b64_list: list[str],
     graph_context: str,
     request_id: str,
+    semantic_prompt: str = "",
 ) -> ServiceRunResult:
     if not ctx.nearby_devices:
         return "No controllable nearby devices were provided.", False, None, {}

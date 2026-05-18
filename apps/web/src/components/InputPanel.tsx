@@ -44,6 +44,11 @@ const QUICK_SCENARIOS = [
     request: "Which cafe did I look at earlier?",
     gps: { latitude: 37.57, longitude: 126.982, location_type: "street", place_name: "Seoul City Hall" },
   },
+  {
+    label: "Label Reader",
+    request: "Read this medicine label and tell me the dosage",
+    gps: null,
+  },
 ];
 
 interface Props {
@@ -89,9 +94,9 @@ export default function InputPanel({ onSubmit, loading }: Props) {
             <Mic className="h-4 w-4 text-[var(--signal)]" />
             <span className="panel-label">Mission Input</span>
           </div>
-          <h2 className="display-face text-2xl font-bold uppercase text-white">Scenario Loader</h2>
+          <h2 className="display-face text-2xl font-bold uppercase text-white">Scenario Director</h2>
           <p className="mt-1 max-w-md text-sm text-[var(--text-dim)]">
-            Assemble the scene payload, choose the operating mode, and send the request into the optimization pipeline.
+            Build the live demo request, attach the visual payload, and stage which path the audience should compare.
           </p>
         </div>
         <div className="rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-[var(--text-faint)]">
@@ -101,18 +106,18 @@ export default function InputPanel({ onSubmit, loading }: Props) {
 
       <div className="rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] p-3">
         <p className="panel-label mb-3">Quick Scenarios</p>
-        <div className="grid gap-2 sm:grid-cols-2">
-        {QUICK_SCENARIOS.map((s) => (
-          <button
-            key={s.label}
-            type="button"
-            onClick={() => applyScenario(s)}
+        <div className="grid gap-2 sm:grid-cols-3">
+          {QUICK_SCENARIOS.map((s) => (
+            <button
+              key={s.label}
+              type="button"
+              onClick={() => applyScenario(s)}
               className="group rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--signal)] hover:bg-[rgba(125,249,208,0.08)]"
-          >
+            >
               <p className="display-face text-base font-bold uppercase tracking-[0.08em] text-white">{s.label}</p>
               <p className="mt-1 text-xs leading-5 text-[var(--text-dim)]">{s.request}</p>
-          </button>
-        ))}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -130,21 +135,26 @@ export default function InputPanel({ onSubmit, loading }: Props) {
         <div className="rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] p-4">
           <p className="panel-label mb-2">Mode</p>
           <div className="grid grid-cols-2 gap-2">
-        {(["optimized", "baseline"] as AgentMode[]).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setMode(m)}
+            {(["optimized", "baseline"] as AgentMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
                 className={`rounded-[16px] border px-3 py-3 text-xs font-semibold uppercase tracking-[0.14em] transition-all ${
-              mode === m
+                  mode === m
                     ? "border-[var(--signal)] bg-[rgba(125,249,208,0.12)] text-[var(--signal)]"
                     : "border-[var(--line)] bg-[rgba(3,9,14,0.58)] text-[var(--text-dim)] hover:border-[var(--line-strong)]"
-            }`}
-          >
-            {m === "optimized" ? "Optimized" : "Baseline"}
-          </button>
-        ))}
+                }`}
+              >
+                {m === "optimized" ? "Optimized" : "Baseline"}
+              </button>
+            ))}
           </div>
+          <p className="mt-3 text-xs leading-5 text-[var(--text-dim)]">
+            {mode === "optimized"
+              ? "Semantic compression, retrieval, and selective payload delivery are active."
+              : "Rawer path for direct baseline comparison during the presentation."}
+          </p>
         </div>
       </div>
 
@@ -197,57 +207,61 @@ export default function InputPanel({ onSubmit, loading }: Props) {
       <div className="mt-4 rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] p-4">
         <p className="panel-label mb-3">Payload Attachments</p>
         <div className="grid gap-3 md:grid-cols-2">
-        <button
-          type="button"
-          onClick={() => imageRef.current?.click()}
+          <button
+            type="button"
+            onClick={() => imageRef.current?.click()}
             className={`flex min-h-[4.5rem] items-center gap-3 rounded-[18px] border px-4 py-3 text-left transition-all ${
               imageFile
                 ? "border-[rgba(125,249,208,0.45)] bg-[rgba(125,249,208,0.08)] text-[var(--signal)]"
                 : "border-[var(--line)] bg-[rgba(3,9,14,0.58)] text-[var(--text-dim)]"
-          }`}
-        >
+            }`}
+          >
             <ImageIcon className="h-4 w-4 shrink-0" />
             <div>
               <p className="display-face text-base font-bold uppercase">{imageFile ? "Image armed" : "Upload image"}</p>
               <p className="text-xs opacity-80">{imageFile ? imageFile.name : "Single-frame visual reasoning payload."}</p>
             </div>
-        </button>
-        <input
-          ref={imageRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            setImageFile(e.target.files?.[0] ?? null);
-            setVideoFile(null);
-          }}
-        />
+          </button>
+          <input
+            ref={imageRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              setImageFile(e.target.files?.[0] ?? null);
+              setVideoFile(null);
+            }}
+          />
 
-        <button
-          type="button"
-          onClick={() => videoRef.current?.click()}
+          <button
+            type="button"
+            onClick={() => videoRef.current?.click()}
             className={`flex min-h-[4.5rem] items-center gap-3 rounded-[18px] border px-4 py-3 text-left transition-all ${
               videoFile
                 ? "border-[rgba(139,184,255,0.45)] bg-[rgba(139,184,255,0.08)] text-[var(--accent)]"
                 : "border-[var(--line)] bg-[rgba(3,9,14,0.58)] text-[var(--text-dim)]"
-          }`}
-        >
+            }`}
+          >
             <Video className="h-4 w-4 shrink-0" />
             <div>
               <p className="display-face text-base font-bold uppercase">{videoFile ? "Video armed" : "Upload video"}</p>
               <p className="text-xs opacity-80">{videoFile ? videoFile.name : "Frame sampling and keyframe optimization path."}</p>
             </div>
-        </button>
-        <input
-          ref={videoRef}
-          type="file"
-          accept="video/*"
-          className="hidden"
-          onChange={(e) => {
-            setVideoFile(e.target.files?.[0] ?? null);
-            setImageFile(null);
-          }}
-        />
+          </button>
+          <input
+            ref={videoRef}
+            type="file"
+            accept="video/*"
+            className="hidden"
+            onChange={(e) => {
+              setVideoFile(e.target.files?.[0] ?? null);
+              setImageFile(null);
+            }}
+          />
+        </div>
+        <div className="mt-3 rounded-[16px] border border-[var(--line)] bg-[rgba(3,9,14,0.5)] px-4 py-3 text-xs leading-5 text-[var(--text-dim)]">
+          Live payload:
+          <span className="ml-2 text-white">{imageFile?.name ?? videoFile?.name ?? "No media attached"}</span>
         </div>
       </div>
 

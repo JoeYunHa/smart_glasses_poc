@@ -6,6 +6,7 @@ from app.schemas.context import ContextRequest
 from app.services import (
     context_memory,
     device_control,
+    label_reader,
     navigation,
     safety_alert,
     scene_assistant,
@@ -13,7 +14,7 @@ from app.services import (
 from app.services.common import ServiceRunResult
 
 ServiceRunner = Callable[
-    [ContextRequest, list[str], str, str],
+    [ContextRequest, list[str], str, str, str],
     Awaitable[ServiceRunResult],
 ]
 
@@ -23,6 +24,7 @@ SERVICE_RUNNERS: dict[str, ServiceRunner] = {
     "navigation": navigation.run,
     "context_memory": context_memory.run,
     "scene_assistant": scene_assistant.run,
+    "label_reader": label_reader.run,
 }
 
 

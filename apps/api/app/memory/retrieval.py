@@ -21,10 +21,7 @@ def store_context(request_id: str, user_request: str, service_name: str, summary
 def retrieve_context(query: str, top_k: int = 5) -> RetrievalResult:
     """Return context hits with explicit source breakdown."""
     vector_results = vector_store.search(query, top_k=top_k)
-    graph_results = [
-        f"[graph] {n['service']}: {n['user_request']}"
-        for n in graph_store.find_scenes_by_keyword(query[:6])[:3]
-    ]
+    graph_results = graph_store.find_subgraph_by_query(query, max_hops=2, max_results=3)
     combined = vector_results + graph_results
     return RetrievalResult(
         combined=combined[:top_k],
@@ -33,6 +30,3 @@ def retrieve_context(query: str, top_k: int = 5) -> RetrievalResult:
     )
 
 
-def find_similar(query: str, top_k: int = 5) -> list[str]:
-    """Backward-compatible helper for existing callers."""
-    return retrieve_context(query, top_k=top_k).combined

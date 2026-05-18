@@ -25,7 +25,7 @@ def test_run_agent_text_only(client, base_context):
 def test_run_agent_returns_valid_service(client, base_context):
     valid_services = {
         "scene_assistant", "navigation", "device_control",
-        "safety_alert", "context_memory", "unknown",
+        "safety_alert", "context_memory", "label_reader", "unknown",
     }
     res = client.post(
         "/api/agent/run",

@@ -43,6 +43,11 @@ export default function GraphContextPanel() {
   }
 
   const displayNodes = results ?? nodes.slice(0, 20);
+  const nodeBuckets = nodes.reduce<Record<string, number>>((acc, node) => {
+    const key = String(node.type ?? "Other");
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <div className="telemetry-card reveal-up rounded-[24px] p-5 sm:p-6">
@@ -74,6 +79,23 @@ export default function GraphContextPanel() {
           </button>
         )}
       </form>
+
+      <div className="mb-4 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-4">
+        <p className="eyebrow">Memory Snapshot</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {Object.entries(nodeBuckets).slice(0, 6).map(([type, count]) => (
+            <span
+              key={type}
+              className="rounded-full border border-[var(--line)] bg-[rgba(3,9,14,0.58)] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[var(--text-dim)]"
+            >
+              {type}: {count}
+            </span>
+          ))}
+          {Object.keys(nodeBuckets).length === 0 && (
+            <span className="text-sm text-[var(--text-dim)]">No memory clusters yet.</span>
+          )}
+        </div>
+      </div>
 
       {displayNodes.length === 0 ? (
         <p className="text-sm text-[var(--text-dim)]">No nodes stored yet. Run the agent to populate scene memory.</p>

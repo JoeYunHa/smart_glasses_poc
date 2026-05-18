@@ -7,6 +7,7 @@ const SERVICE_LABELS: Record<ServiceType, { label: string; color: string }> = {
   navigation: { label: "Navigation", color: "text-emerald-400 bg-emerald-900/30 border-emerald-700" },
   context_memory: { label: "Context Memory", color: "text-amber-400 bg-amber-900/30 border-amber-700" },
   scene_assistant: { label: "Scene Assistant", color: "text-purple-400 bg-purple-900/30 border-purple-700" },
+  label_reader: { label: "Label Reader", color: "text-teal-400 bg-teal-900/30 border-teal-700" },
   unknown: { label: "Unknown", color: "text-gray-400 bg-gray-800 border-gray-600" },
 };
 
@@ -39,11 +40,28 @@ export default function AgentDecisionPanel({ response }: Props) {
           </div>
           <h2 className="display-face text-2xl font-bold uppercase text-white">Optimization Route</h2>
           <p className="mt-1 text-sm text-[var(--text-dim)]">
-            Watch the request move through compression, memory retrieval, routing, and response generation.
+            Show the audience exactly where the request was compressed, enriched, routed, and answered.
           </p>
         </div>
         <div className="rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-[var(--text-faint)]">
           req {response.request_id.slice(0, 8)}
+        </div>
+      </div>
+
+      <div className="mb-5 rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-4">
+        <p className="eyebrow">Selected Path</p>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="display-face text-3xl font-bold uppercase text-white">{svc.label}</p>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-dim)]">
+              Router confidence is {confidencePct}%. This run used the {response.mode} path and
+              {response.vlm_used ? " reached a cloud model." : " remained local."}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:w-[15rem]">
+            <MiniStat label="Input" value={response.original_frame_count} />
+            <MiniStat label="Kept" value={response.selected_keyframe_count} />
+          </div>
         </div>
       </div>
 
@@ -98,6 +116,15 @@ function StatBox({ label, value, highlight }: { label: string; value: number; hi
     <div className="rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-3 text-center">
       <p className={`display-face text-3xl font-bold leading-none ${highlight ? "text-[var(--signal)]" : "text-white"}`}>{value}</p>
       <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-[var(--text-faint)]">{label}</p>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-[16px] border border-[var(--line)] bg-[rgba(3,9,14,0.52)] p-3">
+      <p className="eyebrow">{label}</p>
+      <p className="mt-2 font-mono text-lg text-white">{value}</p>
     </div>
   );
 }
