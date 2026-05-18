@@ -1,4 +1,9 @@
-import { AlertTriangle, Building2, Calendar, CheckCircle, Clock, Layers, Package, ScanText, Volume2, XCircle, Zap } from "lucide-react";
+import {
+  AlertTriangle, Building2, Calendar, CheckCircle, Clock,
+  Layers, Package, ScanText, Square, Volume2, XCircle, Zap,
+} from "lucide-react";
+import { useEffect } from "react";
+import { useTTS } from "@/hooks/useTTS";
 import type { AgentResponse } from "@/types/agent";
 
 interface Props {
@@ -22,17 +27,17 @@ interface LabelField {
 }
 
 const LABEL_FIELD_ICONS: Record<string, React.ReactNode> = {
-  "제품명":    <Package      className="w-4 h-4 text-teal-400" />,
-  "약품명":    <Package      className="w-4 h-4 text-teal-400" />,
-  "제품명/약품명": <Package  className="w-4 h-4 text-teal-400" />,
-  "주성분":    <Layers       className="w-4 h-4 text-teal-300" />,
-  "핵심 성분": <Layers       className="w-4 h-4 text-teal-300" />,
-  "용법":      <Clock        className="w-4 h-4 text-sky-400" />,
-  "용량":      <Clock        className="w-4 h-4 text-sky-400" />,
-  "용법·용량": <Clock        className="w-4 h-4 text-sky-400" />,
-  "주의사항":  <AlertTriangle className="w-4 h-4 text-amber-400" />,
-  "유효기간":  <Calendar     className="w-4 h-4 text-rose-400" />,
-  "제조사":    <Building2    className="w-4 h-4 text-slate-400" />,
+  "제품명":        <Package       className="w-4 h-4 text-teal-400" />,
+  "약품명":        <Package       className="w-4 h-4 text-teal-400" />,
+  "제품명/약품명": <Package       className="w-4 h-4 text-teal-400" />,
+  "주성분":        <Layers        className="w-4 h-4 text-teal-300" />,
+  "핵심 성분":     <Layers        className="w-4 h-4 text-teal-300" />,
+  "용법":          <Clock         className="w-4 h-4 text-sky-400" />,
+  "용량":          <Clock         className="w-4 h-4 text-sky-400" />,
+  "용법·용량":     <Clock         className="w-4 h-4 text-sky-400" />,
+  "주의사항":      <AlertTriangle className="w-4 h-4 text-amber-400" />,
+  "유효기간":      <Calendar      className="w-4 h-4 text-rose-400" />,
+  "제조사":        <Building2     className="w-4 h-4 text-slate-400" />,
 };
 
 function fieldIcon(label: string): React.ReactNode {
@@ -57,6 +62,65 @@ function extractSafetyNote(text: string): string {
   return line ? line.replace("⚠️", "").trim() : "";
 }
 
+// ── TTS helpers ───────────────────────────────────────────────────────────────
+
+/** Waveform bars animation shown while TTS is active */
+function SpeakingIndicator() {
+  return (
+    <span className="flex items-end gap-[3px] h-4" aria-label="speaking">
+      {[0, 1, 2, 3].map((i) => (
+        <span
+          key={i}
+          className="w-[3px] rounded-full bg-[var(--signal)] animate-bounce"
+          style={{ animationDelay: `${i * 0.1}s`, height: `${8 + (i % 2) * 6}px` }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** Play / Stop TTS button */
+function TTSButton({
+  speaking,
+  supported,
+  onPlay,
+  onStop,
+}: {
+  speaking: boolean;
+  supported: boolean;
+  onPlay: () => void;
+  onStop: () => void;
+}) {
+  if (!supported) return null;
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {speaking && <SpeakingIndicator />}
+      <button
+        onClick={speaking ? onStop : onPlay}
+        title={speaking ? "음성 중지" : "음성으로 듣기"}
+        className={`min-w-0 rounded-full border px-3 py-1.5 text-[11px] transition-colors ${
+          speaking
+            ? "border-[rgba(255,140,105,0.45)] bg-[rgba(255,140,105,0.12)] text-[var(--alert)]"
+            : "border-[var(--line)] bg-[rgba(255,255,255,0.04)] text-[var(--text-faint)] hover:text-white"
+        }`}
+      >
+        <span className="button-pill flex items-center justify-center gap-1.5 uppercase">
+          {speaking ? (
+            <>
+              <Square className="h-3 w-3 shrink-0 fill-current" /> Stop
+            </>
+          ) : (
+            <>
+              <Volume2 className="h-3 w-3 shrink-0" /> Play
+            </>
+          )}
+        </span>
+      </button>
+    </div>
+  );
+}
+
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function LabelReaderOutput({ text }: { text: string }) {
@@ -64,7 +128,6 @@ function LabelReaderOutput({ text }: { text: string }) {
   const safetyNote = extractSafetyNote(text);
 
   if (fields.length === 0) {
-    // Fallback: OCR extracted nothing parseable — show raw text
     return (
       <div className="rounded-[20px] border border-teal-800/50 bg-[rgba(20,184,166,0.05)] p-4">
         <p className="text-sm leading-7 text-white whitespace-pre-wrap">{text}</p>
@@ -102,6 +165,16 @@ function LabelReaderOutput({ text }: { text: string }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function OutputPanel({ response }: Props) {
+  const { speaking, supported, speak, stop } = useTTS();
+
+  // Auto-play TTS whenever a new response arrives (keyed by request_id).
+  useEffect(() => {
+    if (response?.response_text) {
+      speak(response.response_text);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [response?.request_id]);
+
   if (!response) {
     return (
       <div className="telemetry-card reveal-up flex h-40 items-center justify-center rounded-[24px] p-6">
@@ -118,26 +191,37 @@ export default function OutputPanel({ response }: Props) {
 
   return (
     <div className="telemetry-card reveal-up rounded-[24px] p-5 sm:p-6">
-      <div className="mb-5 flex items-center gap-2">
+      {/* Header */}
+      <div className="mb-5 flex items-start gap-2">
         {icon}
-        <div>
+        <div className="min-w-0">
           <p className="panel-label">Output Feed</p>
-          <h2 className="display-face text-2xl font-bold uppercase text-white">
+          <h2 className="display-face text-xl font-bold uppercase text-white">
             {isLabelReader ? "Label Read Result" : "Response + Action"}
           </h2>
         </div>
-        <span className="ml-auto rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-[var(--text-faint)]">
-          {response.mode}
-        </span>
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <TTSButton
+            speaking={speaking}
+            supported={supported}
+            onPlay={() => speak(response.response_text)}
+            onStop={stop}
+          />
+          <span className="rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-[var(--text-faint)]">
+            {response.mode}
+          </span>
+        </div>
       </div>
 
+      {/* Result description */}
       <div className="mb-4 rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-4 py-3">
-        <p className="eyebrow">Audience View</p>
+        <p className="eyebrow">Result View</p>
         <p className="mt-2 text-sm leading-6 text-[var(--text-dim)]">
-          This panel represents the spoken guidance or action outcome produced after the selected service finishes.
+          Voice guidance or action result generated after the selected service completes.
         </p>
       </div>
 
+      {/* Response body */}
       {isLabelReader ? (
         <LabelReaderOutput text={response.response_text} />
       ) : (
@@ -148,6 +232,7 @@ export default function OutputPanel({ response }: Props) {
         </div>
       )}
 
+      {/* Action result */}
       {response.action_result && (
         <div
           className={`mt-4 flex items-start gap-3 rounded-[20px] border p-4 ${
@@ -170,7 +255,7 @@ export default function OutputPanel({ response }: Props) {
         </div>
       )}
 
-      <p className="mt-4 text-xs font-mono text-[var(--text-faint)]">request id: {response.request_id}</p>
+      <p className="mt-4 text-xs font-mono text-[var(--text-faint)]">Request ID: {response.request_id}</p>
     </div>
   );
 }

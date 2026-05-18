@@ -35,3 +35,14 @@ def read_logs(limit: int = 100) -> list[dict]:
         return []
     lines = path.read_text(encoding="utf-8").strip().splitlines()
     return [json.loads(line) for line in lines[-limit:]]
+
+
+def clear_logs() -> int:
+    """eval.jsonl을 초기화하고 삭제된 레코드 수를 반환한다."""
+    path = _get_log_path()
+    if not path.exists():
+        return 0
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    count = len([l for l in lines if l.strip()])
+    path.write_text("", encoding="utf-8")
+    return count

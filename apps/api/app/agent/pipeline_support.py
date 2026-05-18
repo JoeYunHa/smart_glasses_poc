@@ -151,9 +151,14 @@ async def route_service(
         from app.groq_client import call_vlm
 
         routing_prompt = (
-            "Classify the following request as exactly one of these services:\n"
-            "scene_assistant, navigation, device_control, safety_alert, context_memory, label_reader\n"
-            "Return only the service name.\n\n"
+            "Classify the user request below into exactly one of these smart glasses services:\n"
+            "- safety_alert: crossing roads, traffic lights, physical hazards, obstacles\n"
+            "- device_control: turning devices on/off, adjusting volume/brightness, IoT control\n"
+            "- navigation: directions, finding places, routes, location queries\n"
+            "- context_memory: recalling something seen/heard earlier, past scenes or places\n"
+            "- label_reader: reading medicine labels, product packaging, ingredient lists\n"
+            "- scene_assistant: describing the current scene, identifying objects or text\n\n"
+            "Reply with only the service name, no explanation.\n\n"
             f"Request: {ctx.user_request}"
         )
         try:

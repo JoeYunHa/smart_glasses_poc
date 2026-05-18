@@ -4,10 +4,10 @@ import { getGraphNodes, queryGraph } from "@/api/agentApi";
 import type { GraphNode } from "@/types/agent";
 
 const NODE_COLORS: Record<string, string> = {
-  Scene: "bg-purple-900/40 border-purple-600 text-purple-300",
-  Location: "bg-emerald-900/40 border-emerald-600 text-emerald-300",
-  Device: "bg-blue-900/40 border-blue-600 text-blue-300",
-  UserIntent: "bg-amber-900/40 border-amber-600 text-amber-300",
+  Scene: "bg-violet-950/40 border-violet-800 text-violet-200",
+  Location: "bg-emerald-950/40 border-emerald-800 text-emerald-200",
+  Device: "bg-blue-950/40 border-blue-800 text-blue-200",
+  UserIntent: "bg-amber-950/40 border-amber-800 text-amber-200",
 };
 
 export default function GraphContextPanel() {
@@ -42,7 +42,7 @@ export default function GraphContextPanel() {
     setResults(data.results);
   }
 
-  const displayNodes = results ?? nodes.slice(0, 20);
+  const displayNodes = results ?? nodes.slice(0, 10);
   const nodeBuckets = nodes.reduce<Record<string, number>>((acc, node) => {
     const key = String(node.type ?? "Other");
     acc[key] = (acc[key] ?? 0) + 1;
@@ -50,64 +50,69 @@ export default function GraphContextPanel() {
   }, {});
 
   return (
-    <div className="telemetry-card reveal-up rounded-[24px] p-5 sm:p-6">
+    <div className="rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] p-4">
       <div className="mb-5 flex items-center gap-2">
         <Network className="h-4 w-4 text-[var(--accent)]" />
         <div>
           <p className="panel-label">Structured Memory</p>
-          <h2 className="display-face text-2xl font-bold uppercase text-white">GraphRAG Context</h2>
+          <h2 className="display-face text-lg font-bold uppercase text-white">GraphRAG Context</h2>
         </div>
-        <span className="ml-auto rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-[var(--text-faint)]">{nodes.length} nodes</span>
-        <button onClick={() => void refresh()} className="rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-2 text-[var(--text-faint)] hover:text-white">
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+        <span className="ml-auto rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[11px] text-[var(--text-faint)]">
+          {nodes.length} nodes
+        </span>
+        <button
+          onClick={() => void refresh()}
+          className="rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-2 text-[var(--text-faint)] hover:text-white"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
 
-      <form onSubmit={(e) => void handleSearch(e)} className="mb-4 flex gap-2">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by keyword, for example cafe or light"
-          className="flex-1 rounded-[16px] border border-[var(--line)] bg-[rgba(3,9,14,0.58)] px-4 py-3 text-sm text-white placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none"
-        />
-        <button type="submit" className="rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[var(--text-dim)] transition-colors hover:text-white">
-          <Search className="w-3.5 h-3.5" />
-        </button>
-        {results && (
-          <button type="button" onClick={() => setResults(null)} className="px-2 text-xs uppercase tracking-[0.12em] text-[var(--text-faint)] hover:text-white">
-            Reset
+      <div className="mb-4 grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+        <form onSubmit={(e) => void handleSearch(e)} className="flex gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search memory, e.g. cafe or light"
+            className="flex-1 rounded-[16px] border border-[var(--line)] bg-[rgba(3,9,14,0.58)] px-4 py-3 text-sm text-white placeholder:text-[var(--text-faint)] focus:border-[var(--accent)] focus:outline-none"
+          />
+          <button
+            type="submit"
+            className="rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[var(--text-dim)] transition-colors hover:text-white"
+          >
+            <Search className="h-3.5 w-3.5" />
           </button>
-        )}
-      </form>
+        </form>
 
-      <div className="mb-4 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-4">
-        <p className="eyebrow">Memory Snapshot</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {Object.entries(nodeBuckets).slice(0, 6).map(([type, count]) => (
-            <span
-              key={type}
-              className="rounded-full border border-[var(--line)] bg-[rgba(3,9,14,0.58)] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[var(--text-dim)]"
-            >
-              {type}: {count}
-            </span>
-          ))}
-          {Object.keys(nodeBuckets).length === 0 && (
-            <span className="text-sm text-[var(--text-dim)]">No memory clusters yet.</span>
-          )}
+        <div className="rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] px-4 py-3">
+          <p className="eyebrow">Snapshot</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {Object.entries(nodeBuckets)
+              .slice(0, 4)
+              .map(([type, count]) => (
+                <span
+                  key={type}
+                  className="rounded-full border border-[var(--line)] bg-[rgba(3,9,14,0.58)] px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-[var(--text-dim)]"
+                >
+                  {type}: {count}
+                </span>
+              ))}
+            {Object.keys(nodeBuckets).length === 0 && <span className="text-sm text-[var(--text-dim)]">No memory yet.</span>}
+          </div>
         </div>
       </div>
 
       {displayNodes.length === 0 ? (
-        <p className="text-sm text-[var(--text-dim)]">No nodes stored yet. Run the agent to populate scene memory.</p>
+        <p className="text-sm text-[var(--text-dim)]">Run the agent to populate scene memory.</p>
       ) : (
-        <div className="soft-scroll space-y-2 max-h-[30rem] overflow-y-auto">
+        <div className="soft-scroll space-y-2 max-h-[24rem] overflow-y-auto">
           {displayNodes.map((node) => {
-            const colorClass = NODE_COLORS[node.type as string] ?? "bg-gray-800 border-gray-600 text-gray-300";
+            const colorClass = NODE_COLORS[node.type as string] ?? "bg-gray-900/40 border-gray-700 text-gray-200";
             return (
-              <div key={node.id} className={`rounded-[18px] border p-3 text-xs ${colorClass}`}>
+              <div key={node.id} className={`rounded-[16px] border p-3 text-xs ${colorClass}`}>
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <span className="display-face text-sm font-bold uppercase tracking-[0.08em]">[{node.type as string}]</span>
-                  <span className="font-mono text-[10px] text-white/55">{String(node.id).slice(0, 18)}</span>
+                  <span className="font-mono text-[10px] text-white/55">{String(node.id).slice(0, 16)}</span>
                 </div>
                 <span className="block leading-6 text-white/88">
                   {(node.user_request as string | undefined) ??

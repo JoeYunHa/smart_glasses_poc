@@ -167,7 +167,7 @@ def build_semantic_prompt(
         lines.append("--- End OCR Text ---\n")
 
     for i, p in enumerate(payloads):
-        scene_label = "bright/outdoor" if p.scene_brightness > 0.5 else "dim/indoor"
+        scene_label = "bright scene" if p.scene_brightness > 0.5 else "dim scene"
         parts = [f"[Frame {i + 1}] {scene_label}, motion={p.motion_level:.2f}"]
         if p.dominant_colors:
             parts.append(f"colors={','.join(p.dominant_colors)}")

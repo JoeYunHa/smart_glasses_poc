@@ -1,7 +1,18 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import agent, context, graph, logs
+from app.demo.seed import reset_demo_memory, seed_demo_memory
+from app.evaluation.logger import clear_logs
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    seed_demo_memory()
+    yield
+
 
 app = FastAPI(
     title="Smart Glasses Physical AI Agent",
@@ -10,6 +21,7 @@ app = FastAPI(
         "PoC API for a smart-glasses-style physical AI agent with perception, "
         "routing, action execution, and evaluation logging."
     ),
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -29,3 +41,11 @@ app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
 @app.get("/health", tags=["health"])
 async def health_check():
     return {"status": "ok", "version": app.version}
+
+
+@app.post("/api/demo/reset", tags=["demo"])
+async def demo_reset():
+    """메모리 스토어 초기화 + 로그 삭제 + 데모 context 재시드. 매 시연 전 호출."""
+    deleted = clear_logs()
+    reset_demo_memory()
+    return {"status": "ok", "deleted_log_records": deleted, "message": "Logs cleared and demo memory re-seeded."}

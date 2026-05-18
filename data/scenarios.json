@@ -39,9 +39,27 @@
     "expected_service": "device_control"
   },
   {
-    "id": "demo3-memory",
-    "title": "Demo 3: Context Memory (GraphRAG)",
-    "description": "과거 장소를 기억해 재방문 길 안내",
+    "id": "demo3-memory-step1",
+    "title": "Demo 3 Step 1: 카페 간판 장면 기록",
+    "description": "카페 간판 이미지 + GPS → Scene 저장 (Step 2 전 반드시 실행)",
+    "context": {
+      "user_request": "이게 무슨 카페야? 간판 읽어줘",
+      "gps": {
+        "latitude": 37.5712,
+        "longitude": 126.9823,
+        "location_type": "street",
+        "place_name": "삼청동 북촌커피 앞"
+      },
+      "nearby_devices": [],
+      "mode": "optimized"
+    },
+    "expected_service": "scene_assistant",
+    "note": "이미지: 카페 간판 사진 업로드. 이 요청이 완료되면 scene이 GraphRAG에 저장된다."
+  },
+  {
+    "id": "demo3-memory-step2",
+    "title": "Demo 3 Step 2: 기억에서 카페 재검색",
+    "description": "과거 장소를 기억해 재방문 길 안내 (Step 1 또는 서버 seed 필요)",
     "context": {
       "user_request": "아까 본 카페 쪽으로 다시 가려면 어떻게 해?",
       "gps": {
@@ -53,6 +71,7 @@
       "nearby_devices": [],
       "mode": "optimized"
     },
-    "expected_service": "context_memory"
+    "expected_service": "context_memory",
+    "note": "graph_context에서 카페 방문 기록을 찾아 VLM 호출 없이 즉시 반환하는 것이 시연 포인트."
   }
 ]

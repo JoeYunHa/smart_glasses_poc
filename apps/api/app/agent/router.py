@@ -2,8 +2,12 @@
 
 _RULES: list[tuple[list[str], list[str], float, str]] = [
     (
-        ["safe", "safety", "danger", "hazard", "cross", "traffic", "obstacle", "warning"],
-        ["crosswalk", "road", "street", "intersection"],
+        [
+            "safe", "safety", "danger", "hazard", "cross", "traffic", "obstacle", "warning",
+            # Korean
+            "안전", "위험", "건너", "횡단", "교통", "장애물", "경고", "조심", "주의",
+        ],
+        ["crosswalk", "road", "street", "intersection", "횡단보도", "도로", "교차로"],
         0.9,
         "safety_alert",
     ),
@@ -11,32 +15,50 @@ _RULES: list[tuple[list[str], list[str], float, str]] = [
         [
             "read label", "label", "medicine", "drug", "pill", "medication",
             "ingredient", "dosage", "expiry", "prescription",
+            # Korean
             "라벨", "약", "의약품", "성분", "복용", "유효기간", "읽어줘", "읽어",
+            "알려줘", "처방", "용량", "용법",
         ],
         [],
         0.88,
         "label_reader",
     ),
     (
-        ["turn on", "turn off", "switch", "volume", "brightness", "device", "control", "play", "pause"],
+        [
+            "turn on", "turn off", "switch", "volume", "brightness", "device", "control", "play", "pause",
+            # Korean
+            "켜", "꺼", "켜줘", "꺼줘", "볼륨", "밝기", "기기", "조명", "스피커", "에어컨", "틀어", "멈춰",
+        ],
         [],
         0.85,
         "device_control",
     ),
     (
-        ["where", "direction", "route", "navigate", "navigation", "go to", "how do i get"],
+        [
+            "where", "direction", "route", "navigate", "navigation", "go to", "how do i get",
+            # Korean
+            "어디", "길", "방향", "경로", "가려면", "가는", "내비", "위치",
+        ],
         [],
         0.82,
         "navigation",
     ),
     (
-        ["remember", "earlier", "before", "previous", "last time", "memory", "looked at"],
+        [
+            "remember", "earlier", "before", "previous", "last time", "memory", "looked at",
+            # Korean
+            "기억", "아까", "전에", "이전", "봤던", "봤어", "기억해", "저번",
+        ],
         [],
         0.85,
         "context_memory",
     ),
     (
-        ["what do you see", "describe", "look", "scene", "image", "what is here", "show me"],
+        [
+            "what do you see", "describe", "look", "scene", "image", "what is here", "show me",
+            # Korean
+            "뭐가", "뭐야", "무엇", "보여", "보이나", "설명", "장면", "어떤", "알려",
+        ],
         [],
         0.7,
         "scene_assistant",

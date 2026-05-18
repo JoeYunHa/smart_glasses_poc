@@ -3,15 +3,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../../.env"),   # apps/api/.env OR project-root/.env
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
 
     # Groq API
     groq_api_key: str = ""
-    groq_model: str = "llama-3.2-11b-vision-preview"
-    groq_text_model: str = "llama-3.1-8b-instant"
+    groq_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+    groq_text_model: str = "llama-3.3-70b-versatile"
 
     # Qdrant
     qdrant_host: str = "localhost"

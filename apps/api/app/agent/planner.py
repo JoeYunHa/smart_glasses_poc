@@ -1,5 +1,6 @@
 """Pipeline orchestrator."""
 
+import asyncio
 import time
 import uuid
 
@@ -57,28 +58,34 @@ async def run_pipeline(
     perception = run_perception(image_bytes, video_bytes, ctx.mode, _ms, user_request=ctx.user_request)
     image_b64_list = perception.image_b64_list
 
-    # 3. GraphRAG retrieval (optimized only)
-    t1 = _ms()
-    graph_context = ""
-    retrieved_nodes = 0
-    if ctx.mode == AgentMode.optimized:
-        retrieval_result = retrieval.retrieve_context(ctx.user_request)
-        retrieved_nodes = len(retrieval_result.combined)
-        if retrieval_result.combined:
-            graph_context = "Relevant prior context: " + "; ".join(retrieval_result.combined[:3])
-    graph_retrieval_ms = _ms() - t1
-
     # Capture raw perception bytes before graph_context augmentation so
     # image_payload_bytes reflects only the semantic payload, not added context.
     perception_prompt_bytes = len(perception.semantic_prompt.encode()) if perception.semantic_prompt else 0
+
+    # 3+4. GraphRAG retrieval (optimized) runs concurrently with routing so its
+    # wall-clock cost is hidden behind the routing step rather than added serially.
+    graph_context = ""
+    retrieved_nodes = 0
+    graph_retrieval_ms = 0
+
+    if ctx.mode == AgentMode.optimized:
+        t_graph_start = _ms()
+        retrieval_task = asyncio.create_task(
+            asyncio.to_thread(retrieval.retrieve_context, ctx.user_request)
+        )
+        routing_result, routing_ms = await route_service(ctx, _ms)
+        retrieval_result = await retrieval_task
+        graph_retrieval_ms = _ms() - t_graph_start
+        retrieved_nodes = len(retrieval_result.combined)
+        if retrieval_result.combined:
+            graph_context = "Relevant prior context: " + "; ".join(retrieval_result.combined[:3])
+    else:
+        routing_result, routing_ms = await route_service(ctx, _ms)
 
     # Inject graph_context into semantic_prompt now that retrieval is done
     semantic_prompt = perception.semantic_prompt
     if semantic_prompt and graph_context:
         semantic_prompt = f"{semantic_prompt}\n\nPrior context: {graph_context}"
-
-    # 4. Route: rule-based; VLM fallback if confidence < threshold
-    routing_result, routing_ms = await route_service(ctx, _ms)
     service_name = routing_result.service_name
     confidence = routing_result.confidence
 
@@ -99,7 +106,10 @@ async def run_pipeline(
         objects, actions, risks = _extract_graph_metadata(service_name, response_text)
         graph_store.add_scene(request_id, ctx, service_name,
                               objects=objects, actions=actions, risks=risks)
-        retrieval.store_context(request_id, ctx.user_request, service_name, response_text[:120])
+        # context_memory responses are derived output, not new knowledge.
+        # Storing them causes recursive contamination on subsequent retrievals.
+        if service_name != "context_memory":
+            retrieval.store_context(request_id, ctx.user_request, service_name, response_text[:120])
 
     # 7. Evaluation log
     token_count = (

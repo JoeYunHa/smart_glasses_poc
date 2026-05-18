@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -39,12 +39,16 @@
       radial-gradient(circle at top right, rgba(139, 184, 255, 0.14), transparent 24%),
       linear-gradient(180deg, #09111a 0%, #081019 42%, #050b12 100%);
     color: var(--text);
-    font-family: "IBM Plex Sans", sans-serif;
+    font-family: "IBM Plex Sans", "Noto Sans KR", sans-serif;
   }
 
   button,
   input {
     font: inherit;
+  }
+
+  button {
+    min-width: 0;
   }
 
   #root {
@@ -54,7 +58,7 @@
 
 @layer components {
   .display-face {
-    font-family: "Rajdhani", sans-serif;
+    font-family: "Rajdhani", "Noto Sans KR", sans-serif;
     letter-spacing: 0.06em;
   }
 
@@ -207,6 +211,29 @@
     font-weight: 700;
     letter-spacing: 0.2em;
     text-transform: uppercase;
+  }
+
+  .button-copy {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-wrap: pretty;
+    line-height: 1.2;
+  }
+
+  .button-copy-strong {
+    letter-spacing: 0.02em;
+  }
+
+  .button-pill {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-wrap: pretty;
+    line-height: 1.15;
+    text-align: center;
   }
 }
 

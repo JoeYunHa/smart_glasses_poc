@@ -9,6 +9,11 @@ _DANGEROUS_PHRASES: list[tuple[str, str]] = [
     ("you are safe", "Use caution and make the final decision yourself."),
     ("completely safe", "Check the situation carefully before acting."),
     ("no problem", "Check the situation carefully before acting."),
+    # Korean overconfident phrases
+    ("건너셔도 됩니다", "주변 상황을 직접 확인 후 판단하세요."),
+    ("건너도 됩니다", "주변 상황을 직접 확인 후 판단하세요."),
+    ("안전합니다", "주변 상황을 직접 확인 후 판단하세요."),
+    ("문제없습니다", "주변 상황을 직접 확인 후 판단하세요."),
 ]
 
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from app.evaluation.logger import read_logs
+from app.evaluation.logger import clear_logs, read_logs
 from app.evaluation.metrics import aggregate
 
 router = APIRouter()
@@ -16,3 +16,10 @@ async def get_logs(limit: int = Query(default=50, le=200)):
 async def get_metrics():
     """Baseline vs Optimized 성능 지표를 집계해 반환한다."""
     return aggregate()
+
+
+@router.delete("/")
+async def delete_logs():
+    """eval.jsonl의 모든 성능 테스트 기록을 삭제한다."""
+    count = clear_logs()
+    return {"status": "ok", "deleted_records": count}
