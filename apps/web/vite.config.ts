@@ -11,8 +11,13 @@ export default defineConfig({
     },
   },
   server: {
+    // Use IPv4 loopback by default to avoid localhost(::1) proxy refusals on Windows.
+    // Override with VITE_API_PROXY_TARGET when backend runs on a different host/port.
     proxy: {
-      "/api": "http://localhost:8000",
+      "/api": {
+        target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
     },
   },
 });

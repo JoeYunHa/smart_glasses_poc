@@ -34,10 +34,16 @@ async def run(
             f"location type: {ctx.gps.location_type or 'unspecified'}"
         )
 
-    # Optimized: semantic prompt includes OCR (street signs) and scene brightness.
-    # GPS is appended so the VLM can ground navigation guidance to the current location.
-    nav_semantic = f"{semantic_prompt}\n\n{gps_info}" if (semantic_prompt and gps_info) else semantic_prompt
+    # Optimized: prepend system instructions so both modes share the same prompt structure.
+    # graph_context is already injected into semantic_prompt by planner — not added again.
+    nav_semantic = ""
+    if semantic_prompt:
+        nav_semantic = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
+        nav_semantic = append_optional_context(nav_semantic, "Scene features (CV-extracted)", semantic_prompt)
+        if gps_info:
+            nav_semantic = f"{nav_semantic}\n\n{gps_info}"
 
+    # Baseline path has no semantic_prompt, so graph_context is injected here only.
     baseline_prompt = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
     baseline_prompt = append_optional_context(baseline_prompt, "Current location", gps_info)
     baseline_prompt = append_optional_context(baseline_prompt, "Previous context", graph_context)

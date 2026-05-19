@@ -1,4 +1,10 @@
-"""SceneAssistant service."""
+"""SceneAssistant service.
+
+To reduce mode divergence, both baseline and optimized now run vision-based
+scene description on the current image. Optimized still benefits from upstream
+keyframe/perception optimizations, but the final scene answer is grounded on
+the same visual input as baseline.
+"""
 
 from app.schemas.context import ContextRequest
 from app.services.common import (
@@ -29,15 +35,15 @@ async def run(
 ) -> ServiceRunResult:
     image_b64 = first_image_or_none(image_b64_list)
 
-    if not image_b64 and not semantic_prompt:
+    if not image_b64:
         return "No image was provided, so the scene cannot be described.", False, None, {}
 
-    # scene_assistant always sends the image regardless of mode.
-    # semantic_prompt (brightness/color/motion stats) cannot substitute for the
-    # actual image in a scene description task — CV features alone do not carry
-    # object-level information needed to answer "what do I see?".
-    # graph_context (prior scene knowledge) is appended when available.
-    # The optimized benefit here comes from keyframe selection, not semantic reduction.
+    # Keep scene_assistant grounded on current visual evidence.
+    # semantic_prompt is supplemental only (helps concise focus), not a text-only path.
     prompt = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
-    prompt = append_optional_context(prompt, "Relevant prior context", graph_context)
+    if semantic_prompt:
+        prompt = append_optional_context(prompt, "Scene features (CV-extracted)", semantic_prompt)
+
+    # Intentionally exclude graph_context here to avoid prior-scene contamination
+    # in direct scene description tasks.
     return await run_vlm_service(prompt, image_b64=image_b64)

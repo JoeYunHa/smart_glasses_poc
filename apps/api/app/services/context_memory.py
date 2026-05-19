@@ -15,9 +15,6 @@ async def run(
     # Use planner's already-retrieved graph_context to avoid a duplicate retrieval call.
     # Only fall back to a fresh retrieval when graph_context is empty (e.g. baseline mode
     # or first request with no prior stored context).
-    # Use planner's already-retrieved graph_context to avoid a duplicate retrieval call.
-    # Only fall back to a fresh retrieval when graph_context is empty (e.g. baseline mode
-    # or first request with no prior stored context).
     if graph_context:
         memory_text = graph_context
     else:

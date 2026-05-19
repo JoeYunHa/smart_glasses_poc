@@ -7,6 +7,8 @@ import json
 import os
 from pathlib import Path
 
+import aiofiles
+
 from app.config import settings
 from app.schemas.log import EvaluationLog
 
@@ -25,8 +27,8 @@ def _get_log_path() -> Path:
 async def write_log(log: EvaluationLog) -> None:
     path = _get_log_path()
     record = log.model_dump(mode="json")
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    async with aiofiles.open(path, "a", encoding="utf-8") as f:
+        await f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def read_logs(limit: int = 100) -> list[dict]:

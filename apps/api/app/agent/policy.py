@@ -1,4 +1,4 @@
-"""Safety policy and action guardrail."""
+"""Safety policy, action guardrail, and shared response sanitization."""
 
 import re
 
@@ -29,8 +29,26 @@ def check_action_allowed(
     return True, ""
 
 
+def sanitize_response(
+    text: str,
+    replacements: list[tuple[str, str]],
+    footer: str = "",
+    footer_check: str = "",
+) -> str:
+    """Generic phrase-replacement sanitizer with optional footer enforcement.
+
+    Performs exact string replacement (case-sensitive).  Use sanitize_safety_response
+    when case-insensitive regex matching is required (e.g. English safety phrases).
+    """
+    for unsafe, safe in replacements:
+        text = text.replace(unsafe, safe)
+    if footer and footer_check and footer_check not in text:
+        text = text.rstrip() + footer
+    return text
+
+
 def sanitize_safety_response(text: str) -> str:
-    """Remove overconfident safety assurances from alert responses."""
+    """Remove overconfident safety assurances from alert responses (regex, case-insensitive)."""
     sanitized = text
     for dangerous, replacement in _DANGEROUS_PHRASES:
         sanitized = re.sub(re.escape(dangerous), replacement, sanitized, flags=re.IGNORECASE)

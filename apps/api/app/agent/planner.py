@@ -4,6 +4,7 @@ import asyncio
 import time
 import uuid
 
+from app.agent import router as _router
 from app.agent.pipeline_support import (
     build_latency,
     classify_failure,
@@ -11,12 +12,15 @@ from app.agent.pipeline_support import (
     run_perception,
 )
 from app.agent.service_registry import get_service_runner
+from app.config import settings
 from app.evaluation import logger as eval_logger
 from app.memory import graph_store, retrieval
 from app.schemas.agent import AgentResponse, ServiceType
 from app.schemas.context import AgentMode, ContextRequest
 from app.schemas.log import EvaluationLog
 
+
+_GRAPH_CONTEXT_MAX_CHARS = 500
 
 _OBJ_HINTS  = ["car", "person", "sign", "crosswalk", "light", "screen", "door", "building",
                "medicine", "drug", "pill", "label", "package"]
@@ -54,13 +58,11 @@ async def run_pipeline(
     t_start = _ms()
 
     # 1. Perception: frame sampling + keyframe selection + semantic extraction
-    # graph_context not yet available at this stage; injected into semantic_prompt later
-    perception = run_perception(image_bytes, video_bytes, ctx.mode, _ms, user_request=ctx.user_request)
+    # Offloaded to a thread so OpenCV CPU work does not block the event loop.
+    perception = await asyncio.to_thread(
+        run_perception, image_bytes, video_bytes, ctx.mode, _ms, user_request=ctx.user_request
+    )
     image_b64_list = perception.image_b64_list
-
-    # Capture raw perception bytes before graph_context augmentation so
-    # image_payload_bytes reflects only the semantic payload, not added context.
-    perception_prompt_bytes = len(perception.semantic_prompt.encode()) if perception.semantic_prompt else 0
 
     # 3+4. GraphRAG retrieval (optimized) runs concurrently with routing so its
     # wall-clock cost is hidden behind the routing step rather than added serially.
@@ -70,15 +72,31 @@ async def run_pipeline(
 
     if ctx.mode == AgentMode.optimized:
         t_graph_start = _ms()
-        retrieval_task = asyncio.create_task(
-            asyncio.to_thread(retrieval.retrieve_context, ctx.user_request)
+        # Fast rule-based pre-check (no VLM, no await) to skip retrieval task creation
+        # for high-confidence device_control — avoids spinning up an unnecessary thread.
+        location_type = ctx.gps.location_type if ctx.gps else ""
+        has_devices = len(ctx.nearby_devices) > 0
+        _pre_service, _pre_conf = _router.route(ctx.user_request, location_type, has_devices)
+        skip_retrieval = (
+            _pre_service == "device_control"
+            and _pre_conf >= settings.router_confidence_threshold
         )
-        routing_result, routing_ms = await route_service(ctx, _ms)
-        retrieval_result = await retrieval_task
-        graph_retrieval_ms = _ms() - t_graph_start
-        retrieved_nodes = len(retrieval_result.combined)
-        if retrieval_result.combined:
-            graph_context = "Relevant prior context: " + "; ".join(retrieval_result.combined[:3])
+
+        if skip_retrieval:
+            routing_result, routing_ms = await route_service(ctx, _ms)
+            graph_retrieval_ms = _ms() - t_graph_start
+        else:
+            retrieval_task = asyncio.create_task(
+                asyncio.to_thread(retrieval.retrieve_context, ctx.user_request)
+            )
+            routing_result, routing_ms = await route_service(ctx, _ms)
+            retrieval_result = await retrieval_task
+            graph_retrieval_ms = _ms() - t_graph_start
+            # Guard against the rare case where VLM fallback changes routing to device_control.
+            if routing_result.service_name != "device_control" and retrieval_result.combined:
+                retrieved_nodes = len(retrieval_result.combined)
+                raw_context = "; ".join(retrieval_result.combined)
+                graph_context = raw_context[:_GRAPH_CONTEXT_MAX_CHARS]
     else:
         routing_result, routing_ms = await route_service(ctx, _ms)
 
@@ -119,19 +137,14 @@ async def run_pipeline(
     # vlm_calls from service usage dict reflects actual calls (2 when semantic fallback fires)
     service_vlm_calls = service_vlm_usage.get("vlm_calls", 1 if vlm_used_service else 0)
 
-    # image_payload_bytes: bytes actually sent to the cloud.
-    #   pure semantic path (text-only, no fallback)  → perception_prompt_bytes
-    #   semantic + vision fallback (vlm_calls==2)    → perception_prompt_bytes + image_b64_bytes
-    #   direct vision (OCR empty, baseline, no image)→ image_b64_bytes
-    # image_sent in service usage is the authoritative signal: 1 when image bytes reached VLM.
-    image_b64_bytes = sum(len(b64.encode()) for b64 in image_b64_list)
-    image_actually_sent = bool(service_vlm_usage.get("image_sent", 0))
-    if not image_actually_sent and perception.semantic_prompt:
-        image_payload_bytes = perception_prompt_bytes
-    elif image_actually_sent and service_vlm_calls == 2:
-        image_payload_bytes = perception_prompt_bytes + image_b64_bytes
-    else:
-        image_payload_bytes = image_b64_bytes
+    # image_payload_bytes: total bytes actually transmitted to the VLM.
+    # call_vlm reports prompt_bytes and image_bytes per call; merge_usage sums them
+    # across 1 or 2 calls (text-only + optional vision fallback), so the accumulated
+    # value reflects the complete transmission including system prompts added by services.
+    image_payload_bytes = (
+        service_vlm_usage.get("prompt_bytes", 0)
+        + service_vlm_usage.get("image_bytes", 0)
+    )
     failure_type = classify_failure(
         service_name,
         action_result.success if action_result else None,
@@ -156,6 +169,10 @@ async def run_pipeline(
         cloud_called=vlm_used,
         fallback_reason=routing_result.fallback_reason,
         failure_type=failure_type,
+        response_text=response_text,
+        response_preview=response_text[:300],
+        path_used=str(service_vlm_usage.get("path_used", "unknown")),
+        quality_check_passed=bool(service_vlm_usage.get("quality_check_passed", True)),
     )
     await eval_logger.write_log(log)
 

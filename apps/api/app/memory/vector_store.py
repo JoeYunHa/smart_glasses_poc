@@ -1,7 +1,15 @@
-"""Qdrant vector store with in-memory fallback.
+"""Qdrant vector store with fastembed embeddings and in-memory fallback.
 
-If Qdrant is not reachable, falls back to a simple cosine-similarity
-in-memory store so the pipeline never hard-fails during local dev.
+Embedding strategy:
+  Primary  — fastembed `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+             (384-dim, ONNX Runtime).  No PyTorch dependency; suitable for CPU demo
+             environments.  Supports Korean + English.  Loaded lazily on first call.
+  Fallback — char-frequency pseudo-embedding (384-dim) when fastembed is not installed.
+             Keeps the pipeline runnable in minimal environments.
+
+Qdrant collection is created with size=384.  If an existing collection has a
+different vector size (e.g. the legacy 64-dim demo store), it is dropped and
+recreated automatically — persistent data from the old schema is discarded.
 """
 
 from __future__ import annotations
@@ -13,17 +21,45 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+_EMBEDDING_DIM = 384
+_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
 # ---------------------------------------------------------------------------
-# In-memory fallback
+# Encoder — lazy-loaded fastembed model (ONNX, no PyTorch)
 # ---------------------------------------------------------------------------
-_memory_store: list[tuple[list[float], str]] = []
+_encoder: object = None   # TextEmbedding instance, False (unavailable), or None (unloaded)
 
 
-def _text_to_vector(text: str) -> list[float]:
-    """Deterministic char-frequency pseudo-embedding (64-dim). Demo only."""
-    vec = [0.0] * 64
+def _get_encoder():
+    global _encoder
+    if _encoder is None:
+        try:
+            from fastembed import TextEmbedding  # type: ignore
+            _encoder = TextEmbedding(model_name=_MODEL_NAME)
+            logger.info("Loaded fastembed encoder: %s (ONNX, dim=%d)", _MODEL_NAME, _EMBEDDING_DIM)
+        except Exception as exc:
+            logger.warning(
+                "fastembed unavailable (%s) — using char-frequency fallback", exc
+            )
+            _encoder = False  # sentinel: unavailable, don't retry
+    return _encoder if _encoder is not False else None
+
+
+# ---------------------------------------------------------------------------
+# Embedding helpers
+# ---------------------------------------------------------------------------
+
+def _encode(text: str) -> list[float]:
+    """Return a normalized 384-dim embedding for *text*."""
+    encoder = _get_encoder()
+    if encoder is not None:
+        # fastembed.TextEmbedding.embed() returns a generator of numpy arrays
+        vec = next(iter(encoder.embed([text])))
+        return vec.tolist()
+    # Char-frequency fallback: 384-dim, L2-normalized
+    vec = [0.0] * _EMBEDDING_DIM
     for ch in text:
-        vec[ord(ch) % 64] += 1.0
+        vec[ord(ch) % _EMBEDDING_DIM] += 1.0
     norm = (sum(v ** 2 for v in vec) ** 0.5) or 1.0
     return [v / norm for v in vec]
 
@@ -36,30 +72,54 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 # ---------------------------------------------------------------------------
+# In-memory fallback store
+# ---------------------------------------------------------------------------
+_memory_store: list[tuple[list[float], str]] = []
+
+
+# ---------------------------------------------------------------------------
 # Qdrant client (optional)
 # ---------------------------------------------------------------------------
 _qdrant = None
 
 try:
     from qdrant_client import QdrantClient
-    from qdrant_client.models import Distance, PointStruct, VectorParams
+    from qdrant_client.models import Distance, VectorParams
 
     _qdrant = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port, timeout=2)
     _qdrant.get_collections()  # connectivity check
 
-    if not any(c.name == settings.qdrant_collection for c in _qdrant.get_collections().collections):
+    # Recreate collection if vector size has changed (e.g. legacy 64-dim → 384-dim).
+    _existing = {c.name for c in _qdrant.get_collections().collections}
+    if settings.qdrant_collection in _existing:
+        info = _qdrant.get_collection(settings.qdrant_collection)
+        existing_size = info.config.params.vectors.size  # type: ignore[union-attr]
+        if existing_size != _EMBEDDING_DIM:
+            logger.warning(
+                "Qdrant collection '%s' has size=%d but expected %d — recreating.",
+                settings.qdrant_collection, existing_size, _EMBEDDING_DIM,
+            )
+            _qdrant.delete_collection(settings.qdrant_collection)
+            _existing.discard(settings.qdrant_collection)
+
+    if settings.qdrant_collection not in _existing:
         _qdrant.create_collection(
             settings.qdrant_collection,
-            vectors_config=VectorParams(size=64, distance=Distance.COSINE),
+            vectors_config=VectorParams(size=_EMBEDDING_DIM, distance=Distance.COSINE),
         )
-    logger.info("Qdrant connected — using persistent vector store")
+    logger.info("Qdrant connected — using persistent vector store (dim=%d)", _EMBEDDING_DIM)
+
 except Exception as e:
     logger.warning("Qdrant unavailable (%s) — using in-memory fallback", e)
     _qdrant = None
 
 
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 def upsert(text: str, payload: dict | None = None) -> None:
-    vec = _text_to_vector(text)
+    vec = _encode(text)
     if _qdrant is not None:
         from qdrant_client.models import PointStruct
         point_id = int(hashlib.md5(text.encode()).hexdigest()[:8], 16)
@@ -72,7 +132,7 @@ def upsert(text: str, payload: dict | None = None) -> None:
 
 
 def search(query: str, top_k: int = 5) -> list[str]:
-    vec = _text_to_vector(query)
+    vec = _encode(query)
     if _qdrant is not None:
         result = _qdrant.query_points(
             collection_name=settings.qdrant_collection,

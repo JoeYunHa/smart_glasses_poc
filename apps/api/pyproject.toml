@@ -7,13 +7,14 @@ requires-python = ">=3.11"
 dependencies = [
     "aiofiles>=25.1.0",
     "fastapi[standard]>=0.136.1",
-    "groq>=0.13.0",
+    "openai>=1.0.0",
     "networkx>=3.6.1",
     "numpy>=2.4.4",
     "opencv-python>=4.13.0.92",
     "pydantic-settings>=2.9.1",
     "python-multipart>=0.0.28",
     "qdrant-client>=1.18.0",
+    "fastembed>=0.4.0",
 ]
 
 [dependency-groups]

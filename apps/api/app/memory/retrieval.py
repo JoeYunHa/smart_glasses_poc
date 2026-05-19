@@ -19,12 +19,18 @@ def store_context(request_id: str, user_request: str, service_name: str, summary
 
 
 def retrieve_context(query: str, top_k: int = 5) -> RetrievalResult:
-    """Return context hits with explicit source breakdown."""
+    """Return context hits with explicit source breakdown.
+
+    Uses quota-based merge: reserves up to 2 slots for graph hits so they are
+    never crowded out when vector search fills the full top_k quota.
+    """
     vector_results = vector_store.search(query, top_k=top_k)
     graph_results = graph_store.find_subgraph_by_query(query, max_hops=2, max_results=3)
-    combined = vector_results + graph_results
+    graph_quota = min(len(graph_results), 2)
+    vector_quota = max(0, top_k - graph_quota)
+    combined = vector_results[:vector_quota] + graph_results[:graph_quota]
     return RetrievalResult(
-        combined=combined[:top_k],
+        combined=combined,
         vector_hits=vector_results[:top_k],
         graph_hits=graph_results[:top_k],
     )

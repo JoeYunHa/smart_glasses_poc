@@ -27,3 +27,7 @@ class EvaluationLog(BaseModel):
     cloud_called: bool = False
     fallback_reason: FallbackReason = "none"
     failure_type: FailureType = "none"
+    response_text: str = ""
+    response_preview: str = ""
+    path_used: str = "unknown"
+    quality_check_passed: bool = True

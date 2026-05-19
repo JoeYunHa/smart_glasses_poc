@@ -14,12 +14,12 @@ from app.agent.router import route
 from app.services.label_reader import _OCR_MARKER, _sanitize_label_response
 
 
-# ── Router: label keywords → label_reader ─────────────────────────────────────
+# ── Router: label keywords → label_reader 라우팅 ───────────────────────────────
 
 @pytest.mark.parametrize("request_text,min_confidence", [
     # 2+ keyword hits → full base confidence (0.88)
     ("Read this medicine label and tell me the dosage", 0.8),
-    ("약 라벨 읽어줘", 0.8),
+    ("라벨 읽어줘", 0.8),
     ("What ingredients are in this medication?", 0.8),
     # 1 keyword hit → 50% of base (0.44); still routes correctly, VLM fallback handles routing
     ("Read the pill bottle for me", 0.0),
@@ -35,13 +35,13 @@ def test_label_reader_routing(request_text, min_confidence):
 # ── Safety sanitizer ───────────────────────────────────────────────────────────
 
 def test_sanitizer_appends_footer_when_missing():
-    response = "1. 제품명: 타이레놀\n2. 용법용량: 1정씩 복용"
+    response = "1. 제품명: 타이레놀\n2. 복용방법: 1알씩 복용"
     result = _sanitize_label_response(response)
     assert "의사 또는 약사에게 확인" in result
 
 
 def test_sanitizer_no_double_append_when_footer_present():
-    response = "정확한 복용량 및 사용법은 의사 또는 약사에게 확인하세요."
+    response = "정확한 복용을 위한 용법을 의사 또는 약사에게 확인하세요."
     result = _sanitize_label_response(response)
     assert result.count("의사 또는 약사에게 확인") == 1
 
@@ -49,7 +49,7 @@ def test_sanitizer_no_double_append_when_footer_present():
 @pytest.mark.parametrize("unsafe_phrase", [
     "복용해도 됩니다",
     "복용하세요",
-    "드시면 됩니다",
+    "드셔도 됩니다",
     "안전합니다",
     "부작용 없습니다",
 ])
@@ -66,12 +66,12 @@ def test_sanitizer_preserves_surrounding_label_content():
     """Redaction must be surgical: unsafe phrase is removed but label fields remain."""
     response = (
         "1. 제품명: 타이레놀\n"
-        "3. 용법용량: 하루 3회 복용하세요. 식후 30분에 드시면 됩니다.\n"
+        "3. 복용방법: 하루 3회 복용하세요. 식후 30분에 드셔도 됩니다\n"
         "5. 유효기간: 2026-12"
     )
     result = _sanitize_label_response(response)
     assert "복용하세요" not in result
-    assert "드시면 됩니다" not in result
+    assert "드셔도 됩니다" not in result
     assert "타이레놀" in result, "Product name must be preserved after redaction"
     assert "유효기간" in result, "Expiry date field must be preserved after redaction"
     assert "의사 또는 약사에게 확인" in result
@@ -88,7 +88,7 @@ async def test_label_run_uses_vision_when_no_ocr_block(monkeypatch):
         captured.append(image_b64)
         return "1. 제품명: 타이레놀\n의사 또는 약사에게 확인하세요.", {"total_tokens": 10, "vlm_calls": 1}
 
-    monkeypatch.setattr("app.groq_client.call_vlm", fake_call_vlm)
+    monkeypatch.setattr("app.llm_client.call_vlm", fake_call_vlm)
 
     from app.schemas.context import AgentMode, ContextRequest
     from app.services import label_reader
@@ -119,7 +119,7 @@ async def test_label_run_uses_text_only_when_ocr_block_present(monkeypatch):
         captured.append(image_b64)
         return "1. 제품명: 타이레놀\n의사 또는 약사에게 확인하세요.", {"total_tokens": 10, "vlm_calls": 1}
 
-    monkeypatch.setattr("app.groq_client.call_vlm", fake_call_vlm)
+    monkeypatch.setattr("app.llm_client.call_vlm", fake_call_vlm)
 
     from app.schemas.context import AgentMode, ContextRequest
     from app.services import label_reader
@@ -155,7 +155,7 @@ async def test_label_run_system_prompt_included_in_ocr_path(monkeypatch):
         received_prompts.append(prompt)
         return "1. 제품명: 타이레놀\n의사 또는 약사에게 확인하세요.", {"total_tokens": 10, "vlm_calls": 1}
 
-    monkeypatch.setattr("app.groq_client.call_vlm", fake_call_vlm)
+    monkeypatch.setattr("app.llm_client.call_vlm", fake_call_vlm)
 
     from app.schemas.context import AgentMode, ContextRequest
     from app.services import label_reader

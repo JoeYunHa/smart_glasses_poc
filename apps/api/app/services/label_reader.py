@@ -1,16 +1,6 @@
-"""LabelReader service — medicine and product label OCR + structured extraction.
+"""LabelReader service: OCR label extraction with safety guardrail."""
 
-Optimized path: semantic_prompt already contains the full label_ocr_raw block
-  extracted by semantic_extractor.extract_label_ocr(). A text-only VLM call
-  is sufficient → image_payload_bytes ≈ 0, faster text model call.
-
-Baseline path: raw image → vision VLM call (comparison baseline).
-
-Safety guardrail: _sanitize_label_response() ensures no definitive dosage
-  confirmation is emitted, since incorrect medical information is especially
-  dangerous for visually impaired users.
-"""
-
+from app.agent.policy import sanitize_response
 from app.schemas.context import ContextRequest
 from app.services.common import (
     ServiceRunResult,
@@ -20,54 +10,95 @@ from app.services.common import (
 )
 
 _SYSTEM_PROMPT = (
-    "You are a label reading assistant for smart glasses designed for visually impaired users. "
-    "Your output is read aloud — be precise and structured.\n\n"
-    "Extract and present each field below in numbered order. "
-    "Read text exactly as printed; do not paraphrase active ingredients or dosage amounts. "
-    "If a field is not legible or absent, output '확인 불가' for that field only — do not skip it.\n\n"
-    "Output format (Korean, each field on its own line):\n"
-    "1. 제품명/약품명: <value>\n"
+    "You are an OCR label extraction assistant for smart glasses. "
+    "This is informational OCR extraction only, not diagnosis or prescribing.\n\n"
+    "Extract only visible label text. If unreadable, write '확인 불가'. "
+    "Output exactly 6 numbered lines in Korean:\n"
+    "1. 제품명: <value>\n"
     "2. 주성분: <value>\n"
-    "3. 용법·용량: <value>\n"
+    "3. 복용법/용량: <value>\n"
     "4. 주의사항: <value>\n"
     "5. 유효기간: <value>\n"
     "6. 제조사: <value>\n\n"
-    "CRITICAL: Never confirm or recommend a specific dosage as medical advice. "
-    "Always append as the final line: "
-    "'⚠️ 정확한 복용량 및 사용법은 반드시 의사 또는 약사에게 확인하세요.' "
-    "Respond in Korean."
+    "Do not provide diagnosis/treatment recommendations; only extract visible text. "
+    "Append this final sentence: "
+    "'정확한 복용법과 사용법은 반드시 의사 또는 약사에게 확인하세요.'"
 )
 
-# Unsafe phrase → safe replacement mapping.
-# Definitive dosage confirmations are redacted at the phrase level so the
-# surrounding label information (product name, ingredients, etc.) is preserved
-# while removing the dangerous authoritative statement.
 _UNSAFE_REPLACEMENTS: list[tuple[str, str]] = [
     ("복용해도 됩니다", "복용 전 반드시 전문가에게 확인하세요"),
     ("복용하세요", "복용 전 반드시 전문가에게 확인하세요"),
     ("드시면 됩니다", "복용 전 반드시 전문가에게 확인하세요"),
+    ("드셔도 됩니다", "복용 전 반드시 전문가에게 확인하세요"),
     ("안전합니다", "안전성은 반드시 전문가에게 확인하세요"),
     ("부작용 없습니다", "부작용 여부는 반드시 전문가에게 확인하세요"),
 ]
 
-_SAFETY_FOOTER = "\n\n⚠️ 정확한 복용량 및 사용법은 반드시 의사 또는 약사에게 확인하세요."
+_SAFETY_FOOTER = "\n\n정확한 복용법과 사용법은 반드시 의사 또는 약사에게 확인하세요."
+_FOOTER_CHECK = "의사 또는 약사에게 확인"
+_OCR_MARKER = "--- Label / Medicine OCR Text ---"
+_REFUSAL_PHRASES = (
+    "i'm sorry",
+    "i’m sorry",
+    "i cannot",
+    "i can't",
+    "can’t",
+    "i can't help",
+    "i cannot help",
+    "can't help with that",
+    "cannot help with that",
+    "cannot assist",
+    "can't assist",
+    "요청을 도와드릴 수",
+    "도와드릴 수 없",
+    "처리할 수 없",
+    "응답할 수 없",
+)
+
+
+def _build_refusal_fallback() -> str:
+    return (
+        "1. 제품명: 확인 불가\n"
+        "2. 주성분: 확인 불가\n"
+        "3. 복용법/용량: 확인 불가\n"
+        "4. 주의사항: 확인 불가\n"
+        "5. 유효기간: 확인 불가\n"
+        "6. 제조사: 확인 불가"
+        + _SAFETY_FOOTER
+    )
 
 
 def _sanitize_label_response(response: str) -> str:
-    """Redact definitive dosage phrases and ensure safety footer is present.
-
-    Each unsafe phrase is replaced inline with a safe alternative so the
-    structured label output remains readable. The safety footer is appended
-    if not already present.
-    """
-    for unsafe, safe in _UNSAFE_REPLACEMENTS:
-        response = response.replace(unsafe, safe)
-    if "의사 또는 약사에게 확인" not in response:
-        response = response.rstrip() + _SAFETY_FOOTER
-    return response
+    return sanitize_response(response, _UNSAFE_REPLACEMENTS, _SAFETY_FOOTER, _FOOTER_CHECK)
 
 
-_OCR_MARKER = "--- Label / Medicine OCR Text ---"
+def _has_sufficient_ocr_content(semantic_prompt: str) -> bool:
+    """Check whether OCR block is meaningful enough for text-only extraction."""
+    if _OCR_MARKER not in semantic_prompt:
+        return False
+    text = semantic_prompt.lower()
+    # Keep only alnum + korean-ish ranges by simple filter; require minimum signal size.
+    meaningful = "".join(ch for ch in text if ch.isalnum())
+    if len(meaningful) < 60:
+        return False
+    # If OCR block is mostly "확인 불가", treat as insufficient.
+    if text.count("확인 불가") >= 3:
+        return False
+    return True
+
+
+def _is_label_response_complete(response: str) -> bool:
+    text = response.lower().strip()
+    if not text:
+        return False
+    if any(p in text for p in _REFUSAL_PHRASES):
+        return False
+    if not all(key in text for key in ("1.", "2.", "3.", "4.", "5.", "6.")):
+        return False
+    # Reject low-value structured outputs where almost every field is unreadable.
+    if text.count("확인 불가") >= 4:
+        return False
+    return True
 
 
 async def run(
@@ -77,13 +108,6 @@ async def run(
     request_id: str,
     semantic_prompt: str = "",
 ) -> ServiceRunResult:
-    """Run label reading service.
-
-    Optimized: semantic_prompt must contain the OCR block (marked by _OCR_MARKER).
-      We prepend _SYSTEM_PROMPT so the VLM receives structured extraction instructions
-      alongside the OCR text — no raw image bytes sent to cloud.
-    Baseline / OCR-empty: raw image sent to vision VLM with _SYSTEM_PROMPT.
-    """
     if not image_b64_list and not semantic_prompt:
         msg = "이미지가 제공되지 않아 라벨을 읽을 수 없습니다." + _SAFETY_FOOTER
         return msg, False, None, {}
@@ -91,17 +115,17 @@ async def run(
     baseline_prompt = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
     baseline_prompt = append_optional_context(baseline_prompt, "Prior context", graph_context)
 
-    # Only use the semantic (text-only) path when actual OCR content is present.
-    # If OCR failed or pytesseract is unavailable, label_ocr_raw is empty and
-    # build_semantic_prompt() omits the OCR block → fall through to vision.
-    has_ocr = _OCR_MARKER in semantic_prompt
-    ocr_semantic_prompt = (
-        f"{_SYSTEM_PROMPT}\n\n{semantic_prompt}" if has_ocr else ""
-    )
+    has_ocr = _has_sufficient_ocr_content(semantic_prompt)
+    ocr_semantic_prompt = f"{_SYSTEM_PROMPT}\n\n{semantic_prompt}" if has_ocr else ""
 
-    return await dispatch(
+    response, vlm_used, action_result, usage = await dispatch(
         ocr_semantic_prompt,
         baseline_prompt,
         first_image_or_none(image_b64_list),
         postprocess=_sanitize_label_response,
+        response_quality_checker=_is_label_response_complete,
     )
+    if not _is_label_response_complete(response):
+        response = _build_refusal_fallback()
+        usage["quality_check_passed"] = False
+    return response, vlm_used, action_result, usage

@@ -66,7 +66,16 @@ def reset_state(monkeypatch):
         vector_store.reset_memory_store()
 
 
-FAKE_USAGE = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+_FAKE_TOKENS = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+
+
+def _make_usage(prompt: str, image_b64: str | None) -> dict:
+    """Build a usage dict that mirrors what the real call_vlm returns."""
+    usage = dict(_FAKE_TOKENS)
+    usage["prompt_bytes"] = len(prompt.encode("utf-8"))
+    if image_b64:
+        usage["image_bytes"] = len(image_b64.encode("utf-8"))
+    return usage
 
 
 @pytest.fixture(autouse=True)
@@ -74,29 +83,30 @@ def stub_vlm(monkeypatch):
     async def fake_call_vlm(
         prompt: str, image_b64: str | None = None, max_tokens: int = 512
     ) -> tuple[str, dict]:
+        usage = _make_usage(prompt, image_b64)
         prompt_lower = prompt.lower()
         if "scene_assistant, navigation, device_control, safety_alert, context_memory, label_reader" in prompt_lower:
             if "label" in prompt_lower or "medicine" in prompt_lower or "dosage" in prompt_lower:
-                return "label_reader", FAKE_USAGE
+                return "label_reader", usage
             if "turn off" in prompt_lower or "light" in prompt_lower:
-                return "device_control", FAKE_USAGE
+                return "device_control", usage
             if "safe" in prompt_lower or "cross" in prompt_lower:
-                return "safety_alert", FAKE_USAGE
+                return "safety_alert", usage
             if "earlier" in prompt_lower or "cafe" in prompt_lower:
-                return "context_memory", FAKE_USAGE
+                return "context_memory", usage
             if "where" in prompt_lower or "route" in prompt_lower:
-                return "navigation", FAKE_USAGE
-            return "scene_assistant", FAKE_USAGE
+                return "navigation", usage
+            return "scene_assistant", usage
         if "safety" in prompt_lower:
-            return "Please slow down and check the surroundings carefully.", FAKE_USAGE
+            return "Please slow down and check the surroundings carefully.", usage
         if "navigation" in prompt_lower:
-            return "Head straight for one block and turn left.", FAKE_USAGE
+            return "Head straight for one block and turn left.", usage
         if "memory" in prompt_lower:
-            return "You previously looked at a cafe near city hall.", FAKE_USAGE
+            return "You previously looked at a cafe near city hall.", usage
         # Default: covers semantic prompts ("[Frame N]" format) and other unmatched cases
-        return "There is a street scene with pedestrians nearby.", FAKE_USAGE
+        return "There is a street scene with pedestrians nearby.", usage
 
-    monkeypatch.setattr("app.groq_client.call_vlm", fake_call_vlm)
+    monkeypatch.setattr("app.llm_client.call_vlm", fake_call_vlm)
 
 
 @pytest.fixture

@@ -9,19 +9,15 @@ import numpy as np
 from app.agent import router as svc_router
 from app.agent.service_registry import known_service_names
 from app.config import settings
+from app.constants import SERVICE_CATEGORY_KEYWORDS
 from app.perception.frame_sampler import sample_frames
 from app.perception.image_preprocessor import frame_to_b64, preprocess_image_bytes
 from app.perception.keyframe_selector import select_keyframes
 from app.schemas.agent import LatencyBreakdown
 from app.schemas.context import AgentMode, ContextRequest
 
-# Keywords that trigger the enhanced label OCR pipeline in perception.
-# Mirrors router._RULES label_reader keywords so mode selection is consistent.
-_LABEL_KEYWORDS: frozenset[str] = frozenset({
-    "label", "medicine", "drug", "pill", "medication",
-    "ingredient", "dosage", "expiry", "prescription",
-    "라벨", "약", "의약품", "성분", "복용", "유효기간", "읽어줘", "읽어",
-})
+# Sourced from constants.py (single definition shared with keyframe_selector and router keywords).
+_LABEL_KEYWORDS: frozenset[str] = frozenset(SERVICE_CATEGORY_KEYWORDS["label"])
 
 
 def _is_label_request(user_request: str) -> bool:
@@ -80,7 +76,9 @@ def run_perception(
         else:
             # Baseline: scene-change-only selection (no query-aware scoring).
             # fps_target=None above means all frames are sampled; this caps at max_keyframes.
+            t_keyframes = now_ms()
             keyframes = select_keyframes(frames, max_keyframes=settings.max_keyframes)
+            keyframe_selection_ms = now_ms() - t_keyframes
         selected_keyframe_count = len(keyframes)
         image_b64_list = [frame_to_b64(frame) for frame in keyframes]
 
@@ -148,7 +146,7 @@ async def route_service(
     usage: dict = {}
     fallback_reason = "none"
     if confidence < settings.router_confidence_threshold:
-        from app.groq_client import call_vlm
+        from app.llm_client import call_vlm
 
         routing_prompt = (
             "Classify the user request below into exactly one of these smart glasses services:\n"
@@ -162,7 +160,7 @@ async def route_service(
             f"Request: {ctx.user_request}"
         )
         try:
-            raw, usage = await call_vlm(routing_prompt)
+            raw, usage = await call_vlm(routing_prompt, max_tokens=16)
             vlm_call_count = 1
             vlm_used = True
             matched = False

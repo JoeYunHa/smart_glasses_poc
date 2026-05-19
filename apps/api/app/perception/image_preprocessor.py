@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 
-def preprocess_image_bytes(image_bytes: bytes, max_size: int = 512) -> str:
+def preprocess_image_bytes(image_bytes: bytes, max_size: int = 768) -> str:
     """Resize image and return base64 JPEG string."""
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
