@@ -12,17 +12,48 @@ from app.config import settings
 from app.constants import SERVICE_CATEGORY_KEYWORDS
 from app.perception.frame_sampler import sample_frames
 from app.perception.image_preprocessor import frame_to_b64, preprocess_image_bytes
-from app.perception.keyframe_selector import select_keyframes
+from app.perception.keyframe_selector import select_keyframes, signal_visibility_score
 from app.schemas.agent import LatencyBreakdown
 from app.schemas.context import AgentMode, ContextRequest
 
 # Sourced from constants.py (single definition shared with keyframe_selector and router keywords).
 _LABEL_KEYWORDS: frozenset[str] = frozenset(SERVICE_CATEGORY_KEYWORDS["label"])
+_SAFETY_KEYWORDS: frozenset[str] = frozenset(SERVICE_CATEGORY_KEYWORDS["safety"])
 
 
 def _is_label_request(user_request: str) -> bool:
     lower = user_request.lower()
     return any(kw in lower for kw in _LABEL_KEYWORDS)
+
+
+def _is_safety_request(user_request: str) -> bool:
+    lower = user_request.lower()
+    return any(kw in lower for kw in _SAFETY_KEYWORDS)
+
+
+def _build_safety_burst_candidates(frame: np.ndarray) -> list[np.ndarray]:
+    """Create a short 3-frame burst from one image for robust safety selection."""
+    candidates: list[np.ndarray] = [frame]
+
+    # Candidate 2: CLAHE contrast-enhanced
+    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
+    l2 = clahe.apply(l)
+    c2 = cv2.cvtColor(cv2.merge([l2, a, b]), cv2.COLOR_LAB2BGR)
+    candidates.append(c2)
+
+    # Candidate 3: sharpened
+    k = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
+    c3 = cv2.filter2D(frame, -1, k)
+    candidates.append(c3)
+    return candidates
+
+
+def _pick_best_safety_frame(frames: list[np.ndarray]) -> np.ndarray:
+    if not frames:
+        raise ValueError("frames must not be empty")
+    return max(frames, key=signal_visibility_score)
 
 
 @dataclass
@@ -79,12 +110,23 @@ def run_perception(
             t_keyframes = now_ms()
             keyframes = select_keyframes(frames, max_keyframes=settings.max_keyframes)
             keyframe_selection_ms = now_ms() - t_keyframes
+        if keyframes and _is_safety_request(user_request):
+            # For safety inference, use one best frame from short burst/keyframe pool.
+            keyframes = [_pick_best_safety_frame(keyframes)]
         selected_keyframe_count = len(keyframes)
-        image_b64_list = [frame_to_b64(frame) for frame in keyframes]
+        if _is_safety_request(user_request):
+            image_b64_list = [frame_to_b64(frame, max_size=1280, quality=90) for frame in keyframes]
+        else:
+            image_b64_list = [frame_to_b64(frame) for frame in keyframes]
 
         semantic_prompt = ""
         if mode == AgentMode.optimized and keyframes:
-            extract_mode = "label" if _is_label_request(user_request) else "general"
+            if _is_label_request(user_request):
+                extract_mode = "label"
+            elif _is_safety_request(user_request):
+                extract_mode = "safety"
+            else:
+                extract_mode = "general"
             prev = None
             payloads: list[SemanticPayload] = []
             for frame in keyframes:
@@ -107,13 +149,28 @@ def run_perception(
         frame_sampling_ms = now_ms() - t0
 
         semantic_prompt = ""
-        if mode == AgentMode.optimized and img is not None:
-            extract_mode = "label" if _is_label_request(user_request) else "general"
-            payload = extract_semantic(img, mode=extract_mode)
+        chosen_img = img
+        if img is not None and _is_safety_request(user_request):
+            burst = _build_safety_burst_candidates(img)
+            chosen_img = _pick_best_safety_frame(burst)
+
+        if mode == AgentMode.optimized and chosen_img is not None:
+            if _is_label_request(user_request):
+                extract_mode = "label"
+            elif _is_safety_request(user_request):
+                extract_mode = "safety"
+            else:
+                extract_mode = "general"
+            payload = extract_semantic(chosen_img, mode=extract_mode)
             semantic_prompt = build_semantic_prompt([payload], user_request)
 
+        if chosen_img is not None and _is_safety_request(user_request):
+            image_b64_list = [frame_to_b64(chosen_img, max_size=1280, quality=90)]
+        else:
+            image_b64_list = [preprocess_image_bytes(image_bytes)]
+
         return PerceptionResult(
-            image_b64_list=[preprocess_image_bytes(image_bytes)],
+            image_b64_list=image_b64_list,
             original_frame_count=1,
             selected_keyframe_count=1,
             frame_sampling_ms=frame_sampling_ms,

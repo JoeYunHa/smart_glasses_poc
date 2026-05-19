@@ -40,10 +40,10 @@ async def run(
 
     # Keep scene_assistant grounded on current visual evidence.
     # semantic_prompt is supplemental only (helps concise focus), not a text-only path.
+    # Strip "Prior context:" injected by planner — graph history contaminates direct scene description.
     prompt = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
     if semantic_prompt:
-        prompt = append_optional_context(prompt, "Scene features (CV-extracted)", semantic_prompt)
+        clean_semantic = semantic_prompt.split("\n\nPrior context:", 1)[0].strip()
+        prompt = append_optional_context(prompt, "Scene features (CV-extracted)", clean_semantic)
 
-    # Intentionally exclude graph_context here to avoid prior-scene contamination
-    # in direct scene description tasks.
     return await run_vlm_service(prompt, image_b64=image_b64)

@@ -72,17 +72,27 @@ def _sanitize_label_response(response: str) -> str:
     return sanitize_response(response, _UNSAFE_REPLACEMENTS, _SAFETY_FOOTER, _FOOTER_CHECK)
 
 
+_OCR_END_MARKER = "--- End OCR Text ---"
+_ROI_REFOCUS_HINT = "Focus on printed text, labels, and packaging information in this image region."
+
+
 def _has_sufficient_ocr_content(semantic_prompt: str) -> bool:
-    """Check whether OCR block is meaningful enough for text-only extraction."""
+    """Check whether OCR block is meaningful enough for text-only extraction.
+
+    Inspects only the text between the OCR delimiters, not surrounding frame
+    metadata — prevents a frame with rich scene info but sparse OCR from
+    incorrectly locking into the text-only path.
+    """
     if _OCR_MARKER not in semantic_prompt:
         return False
-    text = semantic_prompt.lower()
-    # Keep only alnum + korean-ish ranges by simple filter; require minimum signal size.
-    meaningful = "".join(ch for ch in text if ch.isalnum())
+    ocr_section = semantic_prompt.split(_OCR_MARKER, 1)[1]
+    if _OCR_END_MARKER in ocr_section:
+        ocr_section = ocr_section.split(_OCR_END_MARKER, 1)[0]
+    ocr_section = ocr_section.strip()
+    meaningful = "".join(ch for ch in ocr_section if ch.isalnum())
     if len(meaningful) < 60:
         return False
-    # If OCR block is mostly "확인 불가", treat as insufficient.
-    if text.count("확인 불가") >= 3:
+    if ocr_section.lower().count("확인 불가") >= 3:
         return False
     return True
 
@@ -118,12 +128,16 @@ async def run(
     has_ocr = _has_sufficient_ocr_content(semantic_prompt)
     ocr_semantic_prompt = f"{_SYSTEM_PROMPT}\n\n{semantic_prompt}" if has_ocr else ""
 
+    # When OCR data is present, suppress image fallback: _build_refusal_fallback() below
+    # handles quality failures without a vision retry, preserving the text-only guarantee.
+    fallback_image = None if has_ocr else first_image_or_none(image_b64_list)
     response, vlm_used, action_result, usage = await dispatch(
         ocr_semantic_prompt,
         baseline_prompt,
-        first_image_or_none(image_b64_list),
+        fallback_image,
         postprocess=_sanitize_label_response,
         response_quality_checker=_is_label_response_complete,
+        roi_refocus_hint=_ROI_REFOCUS_HINT,
     )
     if not _is_label_response_complete(response):
         response = _build_refusal_fallback()

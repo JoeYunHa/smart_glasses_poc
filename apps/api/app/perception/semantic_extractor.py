@@ -35,6 +35,7 @@ class SemanticPayload:
     label_ocr_raw: str = ""           # enhanced OCR output (label mode only)
     text_density: float = 0.0         # ratio of text-pixel area; high → label image
     dominant_colors: list[str] = field(default_factory=list)
+    signal_area_colors: list[str] = field(default_factory=list)  # upper-ROI colors (safety mode)
     scene_brightness: float = 0.0     # 0–1; > 0.5 → outdoor/bright
     motion_level: float = 0.0         # 0–1; inter-frame motion magnitude
 
@@ -112,6 +113,10 @@ def extract_semantic(
 
     mode="general": standard brightness/motion/color + sparse OCR (--psm 11).
     mode="label"  : same general features + enhanced label OCR pipeline.
+    mode="safety" : general features + upper-ROI signal color analysis.
+                    Computes signal_area_colors from the top 55% of the frame
+                    so the LLM receives a signal-specific color hint that is
+                    not diluted by ground-level vegetation or other scene colors.
     """
     p = SemanticPayload()
 
@@ -128,7 +133,16 @@ def extract_semantic(
         if cv2.inRange(hsv, lo, hi).mean() > 1.0:
             p.dominant_colors.append(name)
 
-    if mode == "label":
+    if mode == "safety":
+        # Analyze upper 55% of the frame where traffic/pedestrian signals appear.
+        # Uses a stricter presence threshold (0.5) so incidental colors are excluded.
+        h = frame.shape[0]
+        roi = frame[: max(1, int(h * 0.55)), :]
+        roi_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        for name, lo, hi in _COLOR_RANGES:
+            if cv2.inRange(roi_hsv, lo, hi).mean() > 0.5:
+                p.signal_area_colors.append(name)
+    elif mode == "label":
         # Enhanced OCR pipeline: replaces the sparse --psm 11 call
         p.label_ocr_raw, p.text_density = extract_label_ocr(frame)
         p.ocr_text = p.label_ocr_raw[:200]
@@ -169,6 +183,10 @@ def build_semantic_prompt(
     for i, p in enumerate(payloads):
         scene_label = "bright scene" if p.scene_brightness > 0.5 else "dim scene"
         parts = [f"[Frame {i + 1}] {scene_label}, motion={p.motion_level:.2f}"]
+        if p.signal_area_colors:
+            # Surface signal-ROI colors before full-scene colors so the LLM
+            # uses the signal-specific evidence rather than ambient scene colors.
+            parts.append(f"signal_area={','.join(p.signal_area_colors)}")
         if p.dominant_colors:
             parts.append(f"colors={','.join(p.dominant_colors)}")
         if p.text_density > 0.1:

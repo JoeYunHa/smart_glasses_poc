@@ -8,6 +8,8 @@ from app.services.common import (
     first_image_or_none,
 )
 
+_ROI_REFOCUS_HINT = "Focus on street signs, landmarks, and directional indicators in this image region."
+
 _SYSTEM_PROMPT = (
     "You are a navigation assistant embedded in smart glasses. "
     "Your guidance is delivered as voice output — use clear, directional language "
@@ -48,4 +50,9 @@ async def run(
     baseline_prompt = append_optional_context(baseline_prompt, "Current location", gps_info)
     baseline_prompt = append_optional_context(baseline_prompt, "Previous context", graph_context)
 
-    return await dispatch(nav_semantic, baseline_prompt, first_image_or_none(image_b64_list))
+    return await dispatch(
+        nav_semantic,
+        baseline_prompt,
+        first_image_or_none(image_b64_list),
+        roi_refocus_hint=_ROI_REFOCUS_HINT,
+    )

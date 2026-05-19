@@ -115,10 +115,10 @@ else:
 ```
 apps/api/app/perception/semantic_extractor.py   ← SemanticPayload 추출
 apps/api/app/services/common.py                 ← dispatch() / run_semantic_service()
-apps/api/app/services/scene_assistant.py        ← dispatch() 적용
+apps/api/app/services/scene_assistant.py        ← 항상 vision; semantic 보조만 사용, Prior context 스트립
 apps/api/app/services/navigation.py             ← dispatch() 적용
-apps/api/app/services/safety_alert.py           ← dispatch() 적용
-apps/api/app/services/label_reader.py           ← OCR-path (text-only)
+apps/api/app/services/safety_alert.py           ← 독립 경로(_run_optimized_safety/_run_baseline_safety)
+apps/api/app/services/label_reader.py           ← OCR 존재 시 text-only + image fallback 억제
 ```
 
 ### 3.3 SemanticPayload 추출 (`semantic_extractor.py`)
@@ -196,35 +196,28 @@ async def run_semantic_service(semantic_prompt, fallback_image_b64, postprocess)
     return response, True, None, usage
 ```
 
-### 3.5 서비스별 dispatch() 적용
+### 3.5 서비스별 경로
 
 #### scene_assistant.py
 
+`scene_assistant`는 `dispatch()`를 사용하지 않습니다. 항상 `run_vlm_service()`로 vision 경로를 사용하며, `semantic_prompt`는 보조 컨텍스트로만 추가됩니다. planner가 주입한 "Prior context:" 섹션은 그래프 오염 방지를 위해 자체 스트립합니다.
+
 ```python
-full_semantic = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
-full_semantic = append_optional_context(full_semantic, "Scene features (CV-extracted)", semantic_prompt)
-full_semantic = append_optional_context(full_semantic, "Relevant prior context", graph_context)
-
-baseline_prompt = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
-baseline_prompt = append_optional_context(baseline_prompt, "Relevant prior context", graph_context)
-
-return await dispatch(full_semantic, baseline_prompt, image_b64)
+prompt = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
+if semantic_prompt:
+    clean_semantic = semantic_prompt.split("\n\nPrior context:", 1)[0].strip()
+    prompt = append_optional_context(prompt, "Scene features (CV-extracted)", clean_semantic)
+return await run_vlm_service(prompt, image_b64=image_b64)
 ```
 
 #### safety_alert.py
 
-```python
-full_semantic = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
-full_semantic = append_optional_context(full_semantic, "Scene features (CV-extracted)", semantic_prompt)
-full_semantic = append_optional_context(full_semantic, "Reference context", graph_context)
+`safety_alert`도 `dispatch()`를 사용하지 않습니다. `_run_optimized_safety()`와 `_run_baseline_safety()` 두 독립 경로로 분기됩니다.
 
-baseline_prompt = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
-baseline_prompt = append_optional_context(baseline_prompt, "Reference context", graph_context)
-
-return await dispatch(full_semantic, baseline_prompt, image_b64, postprocess=sanitize_safety_response)
-```
-
-`sanitize_safety_response`는 `postprocess` 인자로 전달되어 optimized/baseline 양쪽 경로 모두에 적용됩니다.
+- **Optimized**: text-only → 품질 게이트 실패 시 high-res 재시도(다운스케일만, 업스케일 없음) → CV-assisted fallback
+- **Baseline**: vision direct → high-res 재시도 → CV-assisted fallback
+- 품질 게이트: `_is_safety_response_complete()` (핵심 3개 필드 중 2개 이상 + 권고문)
+- 색상 충돌 검사: `_is_color_conflict()` (CV 색상 추정 vs LLM 텍스트 색상 비교)
 
 #### navigation.py
 

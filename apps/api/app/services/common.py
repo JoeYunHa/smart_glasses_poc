@@ -92,6 +92,7 @@ async def run_semantic_service(
     postprocess: Callable[[str], str] | None = None,
     response_quality_checker: Callable[[str], bool] | None = None,
     fallback_vision_prompt: str | None = None,
+    roi_refocus_hint: str | None = None,
 ) -> ServiceRunResult:
     """Send text-only semantic prompt to VLM.
 
@@ -138,7 +139,8 @@ async def run_semantic_service(
         for idx, focus_crop_b64 in enumerate(focus_crops):
             roi_attempted = True
             focused_prompt = (
-                "Focus on traffic signals/signage and nearby vehicles in this ROI.\n\n"
+                (roi_refocus_hint or "Analyze this image region and answer the user's request.")
+                + "\n\n"
                 + semantic_prompt
             )
             focused_response, focused_usage = await call_vlm(
@@ -202,6 +204,7 @@ async def dispatch(
     image_b64: str | None,
     postprocess: Callable[[str], str] | None = None,
     response_quality_checker: Callable[[str], bool] | None = None,
+    roi_refocus_hint: str | None = None,
 ) -> ServiceRunResult:
     """Route to semantic (optimized) or vision (baseline) VLM path.
 
@@ -215,6 +218,7 @@ async def dispatch(
             postprocess=postprocess,
             response_quality_checker=response_quality_checker,
             fallback_vision_prompt=baseline_prompt,
+            roi_refocus_hint=roi_refocus_hint,
         )
     return await run_vlm_service(
         baseline_prompt,

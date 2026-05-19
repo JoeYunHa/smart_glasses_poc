@@ -11,7 +11,49 @@ from __future__ import annotations
 import pytest
 
 from app.agent.router import route
-from app.services.label_reader import _OCR_MARKER, _sanitize_label_response
+from app.services.label_reader import (
+    _OCR_MARKER,
+    _has_sufficient_ocr_content,
+    _sanitize_label_response,
+)
+
+
+# ── _has_sufficient_ocr_content ───────────────────────────────────────────────
+
+_RICH_OCR_BLOCK = (
+    "\n--- Label / Medicine OCR Text ---\n"
+    "[Label 1]:\n타이레놀 아세트아미노펜 500mg 60정\n주성분: acetaminophen 500mg\n"
+    "복용법: 1일 3회 식후 복용\n유효기간: 2026-12\n제조사: 한국얀센\n--- End OCR Text ---\n"
+)
+
+
+def test_ocr_sufficient_with_rich_block():
+    prompt = "User request: read the label\n" + _RICH_OCR_BLOCK
+    assert _has_sufficient_ocr_content(prompt)
+
+
+def test_ocr_insufficient_without_marker():
+    prompt = "User request: read the label\n[Frame 1] bright | colors=red"
+    assert not _has_sufficient_ocr_content(prompt)
+
+
+def test_ocr_insufficient_with_sparse_block():
+    """OCR section has only a few chars — must reject even if surrounding text is long."""
+    long_frame_metadata = "[Frame 1] bright/outdoor | motion=0.00 | colors=red,green,blue | text_density=0.18\n" * 5
+    sparse_block = "\n--- Label / Medicine OCR Text ---\n[Label 1]:\n정\n--- End OCR Text ---\n"
+    prompt = long_frame_metadata + sparse_block
+    # The long frame metadata would pass the old whole-prompt check (> 60 alnum)
+    # but the OCR section itself has fewer than 60 alnum chars → should reject
+    assert not _has_sufficient_ocr_content(prompt)
+
+
+def test_ocr_insufficient_when_mostly_unreadable():
+    """Block with ≥3 '확인 불가' fields is treated as uninformative."""
+    prompt = (
+        "--- Label / Medicine OCR Text ---\n"
+        "[Label 1]:\n확인 불가\n확인 불가\n확인 불가\n확인 불가\n--- End OCR Text ---"
+    )
+    assert not _has_sufficient_ocr_content(prompt)
 
 
 # ── Router: label keywords → label_reader 라우팅 ───────────────────────────────
@@ -133,7 +175,8 @@ async def test_label_run_uses_text_only_when_ocr_block_present(monkeypatch):
     semantic_with_ocr = (
         "User request: read the medicine label\n"
         "\n--- Label / Medicine OCR Text ---\n"
-        "[Label 1]:\n타이레놀 500mg 60정\n--- End OCR Text ---\n"
+        "[Label 1]:\n타이레놀 아세트아미노펜 500mg 60정\n주성분: acetaminophen 500mg\n"
+        "복용법: 1일 3회 식후 복용\n유효기간: 2026-12\n제조사: 한국얀센\n--- End OCR Text ---\n"
         "\n[Frame 1] bright/outdoor, motion=0.00, text_density=0.18"
     )
     assert _OCR_MARKER in semantic_with_ocr  # sanity check
@@ -169,7 +212,8 @@ async def test_label_run_system_prompt_included_in_ocr_path(monkeypatch):
     semantic_with_ocr = (
         "User request: read the medicine label\n"
         "\n--- Label / Medicine OCR Text ---\n"
-        "[Label 1]:\n타이레놀 500mg\n--- End OCR Text ---\n"
+        "[Label 1]:\n타이레놀 아세트아미노펜 500mg 60정\n주성분: acetaminophen 500mg\n"
+        "복용법: 1일 3회 식후 복용\n유효기간: 2026-12\n--- End OCR Text ---\n"
     )
 
     await label_reader.run(ctx, ["FAKE_B64=="], "", "req-test-003", semantic_with_ocr)

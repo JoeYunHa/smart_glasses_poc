@@ -48,8 +48,13 @@ def sanitize_response(
 
 
 def sanitize_safety_response(text: str) -> str:
-    """Remove overconfident safety assurances from alert responses (regex, case-insensitive)."""
+    """Remove overconfident safety assurances and non-standard prefixes from alert responses."""
     sanitized = text
     for dangerous, replacement in _DANGEROUS_PHRASES:
         sanitized = re.sub(re.escape(dangerous), replacement, sanitized, flags=re.IGNORECASE)
+    # Strip non-standard recommendation label prefixes the LLM sometimes adds.
+    # e.g. "주요 추천: 대기하세요." → "대기하세요."
+    sanitized = re.sub(r"주요\s*추천\s*[:：]\s*", "", sanitized)
+    sanitized = re.sub(r"최종\s*추천\s*[:：]\s*", "", sanitized)
+    sanitized = re.sub(r"(?<!\w)추천\s*[:：]\s*", "", sanitized)
     return sanitized

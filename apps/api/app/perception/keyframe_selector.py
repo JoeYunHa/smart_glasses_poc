@@ -97,6 +97,11 @@ def _signal_visibility_score(frame: np.ndarray) -> float:
     return float(max(0.0, min(score, 1.0)))
 
 
+def signal_visibility_score(frame: np.ndarray) -> float:
+    """Public wrapper for safety-frame ranking."""
+    return _signal_visibility_score(frame)
+
+
 def select_keyframes(
     frames: list[np.ndarray],
     max_keyframes: int = 8,

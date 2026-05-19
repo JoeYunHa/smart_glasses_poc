@@ -18,6 +18,12 @@ def preprocess_image_bytes(image_bytes: bytes, max_size: int = 768) -> str:
     return base64.b64encode(encoded.tobytes()).decode("utf-8")
 
 
-def frame_to_b64(frame: np.ndarray) -> str:
-    _, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+def frame_to_b64(frame: np.ndarray, max_size: int | None = None, quality: int = 85) -> str:
+    img = frame
+    if max_size is not None:
+        h, w = img.shape[:2]
+        if max(h, w) > max_size:
+            scale = max_size / max(h, w)
+            img = cv2.resize(img, (int(w * scale), int(h * scale)))
+    _, encoded = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
     return base64.b64encode(encoded.tobytes()).decode("utf-8")
