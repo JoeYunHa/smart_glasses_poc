@@ -1,5 +1,7 @@
 """ContextMemory service."""
 
+import asyncio
+
 from app.memory.retrieval import retrieve_context
 from app.schemas.context import ContextRequest
 from app.services.common import ServiceRunResult, run_vlm_service
@@ -12,17 +14,16 @@ async def run(
     request_id: str,
     semantic_prompt: str = "",
 ) -> ServiceRunResult:
-    # Use planner's already-retrieved graph_context to avoid a duplicate retrieval call.
-    # Only fall back to a fresh retrieval when graph_context is empty (e.g. baseline mode
-    # or first request with no prior stored context).
-    if graph_context:
-        memory_text = graph_context
-    else:
-        retrieval_result = retrieve_context(ctx.user_request, top_k=5)
-        similar = retrieval_result.combined
-        if not similar:
-            return "관련된 이전 기억을 찾지 못했습니다.", False, None, {}
-        memory_text = "\n".join(f"- {s}" for s in similar)
+    # Perform dedicated retrieval with a larger budget.  The planner-provided
+    # graph_context is capped at 500 chars (auxiliary budget for perception services)
+    # and is insufficient here where retrieved content IS the primary answer source.
+    # asyncio.to_thread avoids blocking the event loop on fastembed + Qdrant I/O.
+    retrieval_result = await asyncio.to_thread(retrieve_context, ctx.user_request, 8)
+    similar = retrieval_result.combined
+    if not similar:
+        return "관련된 이전 기억을 찾지 못했습니다.", False, None, {"retrieved_nodes": 0}
+
+    memory_text = "\n".join(f"- {s}" for s in similar)
 
     prompt = (
         "You are a memory assistant embedded in smart glasses. "
@@ -34,4 +35,6 @@ async def run(
         f"User request: {ctx.user_request}"
     )
 
-    return await run_vlm_service(prompt, image_b64=None)
+    text, vlm_used, action, usage = await run_vlm_service(prompt, image_b64=None)
+    usage["retrieved_nodes"] = len(similar)
+    return text, vlm_used, action, usage

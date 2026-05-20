@@ -41,15 +41,15 @@ def test_env_example_no_groq_keys():
 
 
 def test_env_example_confidence_threshold_matches_code_default():
-    """ROUTER_CONFIDENCE_THRESHOLD in .env.example must equal config.py default (0.35)."""
+    """ROUTER_CONFIDENCE_THRESHOLD in .env.example must equal config.py default (0.40)."""
     env_example = _API_ROOT / ".env.example"
     assert env_example.exists(), ".env.example not found"
     for line in env_example.read_text(encoding="utf-8-sig").splitlines():
         if line.startswith("ROUTER_CONFIDENCE_THRESHOLD="):
             _, _, value = line.partition("=")
-            assert float(value.strip()) == 0.35, (
+            assert float(value.strip()) == 0.40, (
                 f"ROUTER_CONFIDENCE_THRESHOLD in .env.example is {value.strip()!r}, "
-                "expected 0.35 (must match config.py default)"
+                "expected 0.40 (must match config.py default)"
             )
             return
     # Key absent — no conflict, skip

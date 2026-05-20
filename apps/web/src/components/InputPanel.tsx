@@ -1,5 +1,5 @@
-import { MapPin, Mic, MonitorSmartphone } from "lucide-react";
-import { useState } from "react";
+import { MapPin, Mic, MonitorSmartphone, Upload } from "lucide-react";
+import { useRef, useState } from "react";
 import type { AgentMode, ContextRequest, DeviceInfo, GpsContext } from "@/types/agent";
 
 const DEFAULT_DEVICES: DeviceInfo[] = [
@@ -33,18 +33,21 @@ const QUICK_SCENARIOS = [
       location_type: "crosswalk",
       place_name: "광화문 사거리",
     },
+    videoPath: "/sample_videos/safety_alert_01.mp4",
     imagePath: "/sample_images/safety_alert_01.png",
   },
   {
     label: "기기 제어",
     request: "거실 조명 꺼줘",
     gps: null,
+    videoPath: null,
     imagePath: "/sample_images/device_control_01.png",
   },
   {
     label: "장면 인식",
     request: "여기 무엇이 보이는지 설명해줘",
     gps: null,
+    videoPath: "/sample_videos/scene_assistant_01.mp4",
     imagePath: "/sample_images/scene_assistant_01.png",
   },
   {
@@ -56,15 +59,19 @@ const QUICK_SCENARIOS = [
       location_type: "street",
       place_name: "서울 시청 앞",
     },
+    videoPath: null,
     imagePath: "/sample_images/context_memory_cafe_01.png",
   },
   {
     label: "라벨 인식",
     request: "약 라벨을 읽고 복용법을 알려줘",
     gps: null,
+    videoPath: null,
     imagePath: "/sample_images/label_reader_medicine_01.png",
   },
-] as const;
+];
+
+type MediaType = "image" | "video" | null;
 
 interface Props {
   onSubmit: (ctx: ContextRequest, image?: File, video?: File) => void;
@@ -80,29 +87,84 @@ export default function InputPanel({ onSubmit, loading }: Props) {
   const [gps, setGps] = useState<GpsContext | null>(null);
   const [useDevices, setUseDevices] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageLoading, setImageLoading] = useState(false);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<MediaType>(null);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function clearMedia() {
+    setImageFile(null);
+    setVideoFile(null);
+    setMediaPreview(null);
+    setMediaType(null);
+  }
+
+  function setImageMedia(file: File, url: string) {
+    setImageFile(file);
+    setVideoFile(null);
+    setMediaPreview(url);
+    setMediaType("image");
+  }
+
+  function setVideoMedia(file: File, url: string) {
+    setVideoFile(file);
+    setImageFile(null);
+    setMediaPreview(url);
+    setMediaType("video");
+  }
 
   async function applyScenario(s: (typeof QUICK_SCENARIOS)[number]) {
     setRequest(s.request);
     setGps(s.gps ?? null);
     setUseDevices(s.label === "기기 제어");
+    clearMedia();
 
-    if (!s.imagePath) return;
-
-    setImageLoading(true);
-    try {
-      const res = await fetch(s.imagePath);
-      const blob = await res.blob();
-      const filename = s.imagePath.split("/").pop() ?? "image.png";
-      const file = new File([blob], filename, { type: blob.type });
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(blob));
-    } catch {
-      // Ignore missing sample media in local demo environments.
-    } finally {
-      setImageLoading(false);
+    // Prefer video when available, fall back to image.
+    if (s.videoPath) {
+      setMediaLoading(true);
+      try {
+        const res = await fetch(s.videoPath);
+        if (res.ok) {
+          const blob = await res.blob();
+          const filename = s.videoPath.split("/").pop() ?? "video.mp4";
+          const file = new File([blob], filename, { type: blob.type || "video/mp4" });
+          setVideoMedia(file, URL.createObjectURL(blob));
+          return;
+        }
+      } catch {
+        // Fall through to image.
+      } finally {
+        setMediaLoading(false);
+      }
     }
+
+    if (s.imagePath) {
+      setMediaLoading(true);
+      try {
+        const res = await fetch(s.imagePath);
+        const blob = await res.blob();
+        const filename = s.imagePath.split("/").pop() ?? "image.png";
+        const file = new File([blob], filename, { type: blob.type });
+        setImageMedia(file, URL.createObjectURL(blob));
+      } catch {
+        // Ignore missing sample media in local demo environments.
+      } finally {
+        setMediaLoading(false);
+      }
+    }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    if (file.type.startsWith("video/")) {
+      setVideoMedia(file, url);
+    } else {
+      setImageMedia(file, url);
+    }
+    e.target.value = "";
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -117,6 +179,7 @@ export default function InputPanel({ onSubmit, loading }: Props) {
         mode,
       },
       imageFile ?? undefined,
+      videoFile ?? undefined,
     );
   }
 
@@ -219,30 +282,65 @@ export default function InputPanel({ onSubmit, loading }: Props) {
         </button>
       </div>
 
-      {imageLoading && (
+      {mediaLoading && (
         <div className="mt-3 flex items-center gap-2 rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-xs text-[var(--text-dim)]">
           <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--signal)]" />
-          샘플 이미지를 불러오는 중입니다.
+          샘플 미디어를 불러오는 중입니다.
         </div>
       )}
 
-      {imagePreview && !imageLoading && (
+      {mediaPreview && !mediaLoading && (
         <div className="mt-3 overflow-hidden rounded-[16px] border border-[rgba(125,249,208,0.3)] bg-[rgba(125,249,208,0.04)]">
-          <img src={imagePreview} alt="payload preview" className="max-h-48 w-full object-cover" />
-          <div className="flex items-center gap-2 px-3 py-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--signal)]" />
-            <span className="truncate text-[11px] text-[var(--signal)]">{imageFile?.name}</span>
+          {mediaType === "video" ? (
+            <video
+              src={mediaPreview}
+              controls
+              className="max-h-48 w-full object-cover"
+            />
+          ) : (
+            <img src={mediaPreview} alt="payload preview" className="max-h-48 w-full object-cover" />
+          )}
+          <div className="flex items-center justify-between gap-2 px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--signal)]" />
+              <span className="truncate text-[11px] text-[var(--signal)]">
+                {(mediaType === "video" ? videoFile?.name : imageFile?.name) ?? ""}
+              </span>
+            </div>
+            <span className="shrink-0 rounded-full border border-[var(--line)] px-2 py-0.5 text-[10px] uppercase tracking-widest text-[var(--text-faint)]">
+              {mediaType === "video" ? "video" : "image"}
+            </span>
           </div>
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={loading || !request.trim()}
-        className="display-face mt-4 w-full rounded-[18px] border border-[var(--signal)] bg-[linear-gradient(90deg,rgba(125,249,208,0.16),rgba(139,184,255,0.14))] px-4 py-3.5 text-center text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:border-[var(--line)] disabled:bg-[rgba(255,255,255,0.04)] disabled:text-[var(--text-faint)]"
-      >
-        <span className="button-pill block uppercase">{loading ? "실행 중" : "에이전트 실행"}</span>
-      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,video/mp4,video/quicktime,video/webm,video/avi"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      <div className="mt-4 flex gap-2">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className={`${CONTROL_BUTTON_BASE} flex-shrink-0 border-[var(--line)] bg-[rgba(3,9,14,0.58)] text-[var(--text-dim)] hover:border-[var(--signal)] hover:text-[var(--signal)]`}
+          title="이미지 또는 영상 직접 업로드"
+        >
+          <Upload className="h-3.5 w-3.5 shrink-0" />
+          <span className="whitespace-nowrap text-[10px] sm:text-[11px]">미디어 업로드</span>
+        </button>
+
+        <button
+          type="submit"
+          disabled={loading || !request.trim()}
+          className="display-face flex-1 rounded-[18px] border border-[var(--signal)] bg-[linear-gradient(90deg,rgba(125,249,208,0.16),rgba(139,184,255,0.14))] px-4 py-3.5 text-center text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:border-[var(--line)] disabled:bg-[rgba(255,255,255,0.04)] disabled:text-[var(--text-faint)]"
+        >
+          <span className="button-pill block uppercase">{loading ? "실행 중" : "에이전트 실행"}</span>
+        </button>
+      </div>
     </form>
   );
 }

@@ -19,6 +19,8 @@ Smart Glasses Agent PoC의 핵심 최적화 전략 3가지와 각 전략의 구�
 
 **Temporal coverage 보장**: 전체 구간을 `max_keyframes` 등분 후 각 구간에서 최고 점수 프레임을 1개씩 선택. 점수가 한 구간에 몰려도 전체 커버리지를 유지한다.
 
+**Safety signal visibility bonus** (safety-critical 요청 전용): 상단 ROI(h × 0.30)에서 red/yellow/green 색상 blob 가시성, 프레임 선명도(Laplacian variance), 대비(RMS contrast)를 추가 점수로 부여해 신호등 판독에 유리한 프레임을 우선 선택한다.
+
 **카테고리 키워드 단일 정의**: `constants.SERVICE_CATEGORY_KEYWORDS`에서 키워드를 공유해 router와 keyframe_selector 간 드리프트를 방지한다.
 
 ### 측정 지표
@@ -52,6 +54,9 @@ Smart Glasses Agent PoC의 핵심 최적화 전략 3가지와 각 전략의 구�
 - `image_payload_bytes` (실제 전송 바이트)
 - `vlm_call_count` (semantic fallback 2회 포함 정확 집계)
 - `cloud_called` (VLM 호출 여부)
+- `path_used` (실행 경로: text_only / full_image_retry_highres / vision_direct 등)
+- `quality_check_passed` (서비스별 품질 게이트 통과 여부)
+- `by_service[service][mode].quality_check_rate` (서비스×모드 교차 집계)
 
 ---
 

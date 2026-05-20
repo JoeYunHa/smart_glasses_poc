@@ -10,6 +10,7 @@ import numpy as np
 
 from app.agent.policy import sanitize_safety_response
 from app.llm_client import call_vlm
+from app.perception.keyframe_selector import signal_visibility_score
 from app.schemas.context import ContextRequest
 from app.services.common import ServiceRunResult, append_optional_context, first_image_or_none, merge_usage
 
@@ -58,6 +59,41 @@ def _is_safety_response_complete(response: str) -> bool:
     core_hits = sum([has_ped, has_vehicle_signal, has_approaching_vehicle])
     has_recommendation = any(k in text for k in ("대기", "주의", "직접 확인", "wait", "caution"))
     return core_hits >= 2 and has_recommendation
+
+
+_UNCERTAIN_TOKENS: tuple[str, ...] = (
+    "판독 불가",
+    "추정",
+    "어려움",
+    "확인 불가",
+    "unknown",
+    "unreadable",
+)
+
+
+def _section_line(response: str, section_no: int) -> str:
+    for line in response.splitlines():
+        if re.match(rf"^\s*{section_no}[\.\):\-]\s*", line.strip().lower()):
+            return line.strip().lower()
+    return ""
+
+
+def _has_explicit_color_value(line: str) -> bool:
+    if not line:
+        return False
+    lowered = line.lower()
+    if any(tok in lowered for tok in _UNCERTAIN_TOKENS):
+        return False
+    has_red = any(tok in lowered for tok in ("red", "빨간", "빨강", "적색", "붉"))
+    has_yellow = any(tok in lowered for tok in ("yellow", "amber", "노랑", "노란", "황색"))
+    has_green = any(tok in lowered for tok in ("green", "초록", "녹색", "파란불"))
+    return sum([has_red, has_yellow, has_green]) == 1
+
+
+def _has_explicit_core_signals(response: str) -> bool:
+    ped_line = _section_line(response, 1)
+    vehicle_line = _section_line(response, 2)
+    return _has_explicit_color_value(ped_line) and _has_explicit_color_value(vehicle_line)
 
 
 def _strip_prior_context_from_semantic(semantic_prompt: str) -> str:
@@ -189,7 +225,7 @@ def _estimate_signal_scores(frame: np.ndarray) -> dict[str, float]:
     if h < 8 or w < 8:
         return {"red": 0.0, "yellow": 0.0, "green": 0.0}
 
-    upper = frame[: max(1, int(h * 0.58)), :]
+    upper = frame[: max(1, int(h * 0.30)), :]
     circle_scores = _score_via_hough_circles(upper)
     if circle_scores is not None:
         return circle_scores
@@ -326,29 +362,84 @@ def _is_color_conflict(response: str, image_b64: str | None, min_conf: float = 0
     text_color = _extract_vehicle_color_from_text(response)
     has_vehicle_section = _mentions_vehicle_signal(response)
 
-    # Conservative gate: if vehicle section exists but text color is ambiguous,
-    # do not trust it when CV has a strong signal estimate.
-    if has_vehicle_section and text_color == "unknown" and cv_color != "unknown" and cv_conf >= 0.58:
-        return True
+    # NOTE: "vehicle section present + text_color=unknown (판독 불가)" is NOT treated as a conflict.
+    # A response that says "판독 불가" for vehicle signal is conservatively safe, not a
+    # dangerous hallucination.  Gate 1 (unknown-text vs strong-CV) caused most text_only
+    # responses to retry unnecessarily, since the LLM routinely writes 판독 불가 when
+    # it cannot confirm a color from CV features alone.
+    # Dangerous case (text says "green" while CV sees red) is handled by Gate 2 below.
 
     if text_color == "green":
         # Hard guard: if red evidence is comparable or stronger, do not trust green text-only.
         if cv_scores["red"] >= max(20.0, cv_scores["green"] * 0.9):
             return True
 
-    # Pedestrian signal check: "green walk" while CV shows dominant red is a dangerous
-    # hallucination (user walks into oncoming traffic).  Apply the same hard guard.
-    ped_color = _extract_pedestrian_color_from_text(response)
-    if ped_color == "green":
-        if cv_scores["red"] >= max(20.0, cv_scores["green"] * 0.9):
-            return True
-    if cv_conf >= min_conf and cv_color != "unknown" and ped_color not in ("unknown", ""):
-        if cv_color != ped_color:
-            return True
-
+    # CV estimate is compared against VEHICLE signal only.
+    # Pedestrian signal is intentionally excluded because ped=green + vehicle=red is a normal
+    # crosswalk state; comparing CV dominant color against pedestrian color creates false conflicts.
     if cv_conf < min_conf or cv_color == "unknown" or text_color == "unknown":
         return False
     return cv_color != text_color
+
+
+def _is_cv_signal_strong(
+    image_b64: str | None,
+    min_conf: float = 0.58,
+    min_visibility: float = 0.40,
+) -> bool:
+    if not image_b64:
+        return False
+    frame = _decode_b64_image(image_b64)
+    if frame is None:
+        return False
+    visibility = signal_visibility_score(frame)
+    if visibility < min_visibility:
+        return False
+    cv_color, cv_conf = _estimate_signal_color(frame)
+    return cv_color != "unknown" and cv_conf >= min_conf
+
+
+_CV_COLOR_KO: dict[str, str] = {
+    "red":    "빨간색(CV 감지)",
+    "yellow": "황색(CV 감지)",
+    "green":  "녹색(CV 감지)",
+}
+
+
+def _patch_response_with_cv(response: str, image_b64: str | None, min_conf: float = 0.58) -> str:
+    """Replace '판독 불가' in the vehicle-signal line (section 2) with CV color estimate.
+
+    The LLM was already instructed to use the CV hint; this enforces the hint when
+    the model defaults to '판독 불가' despite having color evidence in the prompt.
+    Only section 2 is patched — pedestrian signal inference from CV dominant color
+    is omitted because the camera may be capturing the vehicle signal head, and
+    guessing the pedestrian inverse carries safety risk.
+    Returns the original string unchanged when CV confidence < min_conf or no image.
+    """
+    if not image_b64:
+        return response
+    frame = _decode_b64_image(image_b64)
+    if frame is None:
+        return response
+    visibility = signal_visibility_score(frame)
+    cv_color, cv_conf = _estimate_signal_color(frame)
+    if cv_color == "unknown" or cv_conf < min_conf or visibility < 0.40:
+        return response
+
+    # Yellow is easily confused with environmental warm light; require higher
+    # confidence before patching to avoid propagating false-positive yellow.
+    effective_min = max(min_conf, 0.65) if cv_color == "yellow" else min_conf
+    if cv_conf < effective_min:
+        return response
+
+    color_label = _CV_COLOR_KO.get(cv_color, cv_color)
+    lines = response.splitlines()
+    result = []
+    for line in lines:
+        if re.match(r"^\s*2[\.\):\-]\s*", line) and "판독 불가" in line:
+            line = re.sub(r"판독\s*불가", color_label, line, count=1)
+        result.append(line)
+    return "\n".join(result)
 
 
 def _build_safety_fallback_response() -> str:
@@ -426,12 +517,41 @@ async def _run_optimized_safety(
 ) -> ServiceRunResult:
     response1, usage1 = await call_vlm(full_semantic, image_b64=None)
     response1 = sanitize_safety_response(response1)
-    if _is_safety_response_complete(response1) and not _is_color_conflict(response1, image_b64):
+
+    # Patch '판독 불가' in vehicle-signal field with CV estimate before quality gate.
+    # The LLM was instructed to use the CV hint; this enforces it when the model
+    # defaults to 판독 불가 despite having color evidence in the prompt.
+    patched = _patch_response_with_cv(response1, image_b64)
+    cv_patched = patched != response1
+
+    if (
+        _is_safety_response_complete(patched)
+        and _has_explicit_core_signals(patched)
+        and not _is_color_conflict(patched, image_b64)
+    ):
         usage1["vlm_calls"] = 1
         usage1["image_sent"] = 0
-        usage1["path_used"] = "text_only"
+        usage1["path_used"] = "text_only_cv_patched" if cv_patched else "text_only"
         usage1["quality_check_passed"] = True
-        return response1, True, None, usage1
+        return patched, True, None, usage1
+
+    # Fast-path: response too incomplete to salvage even with CV patching,
+    # but CV is confident enough to build a structured fallback without a VLM retry.
+    # _has_explicit_core_signals is intentionally omitted here: cv_assisted is built from
+    # OpenCV blob detection, so "추정" labels are honest and expected.  The gate applies
+    # only to the text-only VLM path above, where the model had full scene context and
+    # should not be returning vague estimates.
+    if _is_cv_signal_strong(image_b64):
+        cv_assisted = sanitize_safety_response(_build_cv_assisted_fallback(image_b64))
+        if (
+            _is_safety_response_complete(cv_assisted)
+            and not _is_color_conflict(cv_assisted, image_b64)
+        ):
+            usage1["vlm_calls"] = 1
+            usage1["image_sent"] = 0
+            usage1["path_used"] = "text_only_cv_fastpath"
+            usage1["quality_check_passed"] = True
+            return cv_assisted, True, None, usage1
 
     return await _safety_retry_then_fallback(
         baseline_prompt, image_b64, usage1,
@@ -479,5 +599,28 @@ async def run(
         semantic_prompt = _strip_prior_context_from_semantic(semantic_prompt)
         full_semantic = f"{_SYSTEM_PROMPT}\n\nUser request: {ctx.user_request}"
         full_semantic = append_optional_context(full_semantic, "Scene features (CV-extracted)", semantic_prompt)
+
+        # Inject CV signal estimate so the text-only path has concrete color evidence.
+        # Scope is limited to section 2 (vehicle signal) — CV detects the dominant
+        # lamp in the upper region which is typically the vehicle signal head.
+        # Applying the same estimate to section 1 (pedestrian signal) would force
+        # both fields to the same color, which is incorrect at a normal crosswalk.
+        if image_b64:
+            frame = _decode_b64_image(image_b64)
+            if frame is not None:
+                cv_color, cv_conf = _estimate_signal_color(frame)
+                # Yellow requires higher confidence: it is easily confused with warm
+                # environmental light (signs, headlights) and transitions are brief.
+                conf_threshold = 0.65 if cv_color == "yellow" else 0.48
+                if cv_color != "unknown" and cv_conf >= conf_threshold:
+                    _KO = {"red": "적색(빨강/정지)", "yellow": "황색(노랑/주의)", "green": "녹색(초록/진행)"}
+                    color_ko = _KO.get(cv_color, cv_color)
+                    full_semantic += (
+                        f"\n\n[CV Signal Analysis] "
+                        f"상단 영역 신호등 색상 추정: {color_ko}, 신뢰도={cv_conf:.2f}. "
+                        f"이 추정값은 2번(차량 신호) 항목의 참고 근거로만 사용하세요. "
+                        f"1번(보행자 신호)은 이미지 특징에서 독립적으로 판단하세요."
+                    )
+
         return await _run_optimized_safety(full_semantic, baseline_prompt, image_b64)
     return await _run_baseline_safety(baseline_prompt, image_b64)

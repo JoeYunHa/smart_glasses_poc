@@ -49,8 +49,10 @@ def route(
 ) -> tuple[str, float]:
     """Return (service_name, confidence)."""
     request_lower = user_request.lower()
+    # Keep default below router_confidence_threshold so unmatched/ambiguous queries
+    # can take the LLM fallback path instead of being forced to scene_assistant.
     best_service = "scene_assistant"
-    best_confidence = 0.25
+    best_confidence = 0.30
 
     for keywords, loc_hints, base_conf, service in _RULES:
         matched = sum(1 for kw in keywords if kw in request_lower)

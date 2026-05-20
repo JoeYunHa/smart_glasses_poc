@@ -20,9 +20,11 @@ import pytest
 
 from app.agent.policy import sanitize_safety_response
 from app.services.safety_alert import (
+    _has_explicit_core_signals,
     _estimate_signal_scores,
     _extract_pedestrian_color_from_text,
     _extract_vehicle_color_from_text,
+    _is_cv_signal_strong,
     _is_color_conflict,
     _is_safety_response_complete,
     _score_via_hough_circles,
@@ -210,8 +212,8 @@ class TestIsColorConflict:
         result = _is_color_conflict("차량 신호: 초록색", image_b64=None)
         assert isinstance(result, bool)
 
-    def test_pedestrian_green_with_red_cv_is_conflict(self):
-        """eval.jsonl regression: ped=green text vs red-dominant CV frame must conflict."""
+    def test_pedestrian_green_with_red_cv_and_unknown_vehicle_is_not_conflict(self):
+        """Vehicle color unknown is conservative-safe; no conflict should be forced."""
         response = (
             "1. 보행자 신호: 녹색\n"
             "2. 차량 신호: 판독 불가\n"
@@ -219,7 +221,7 @@ class TestIsColorConflict:
             "주의하며 진행하세요."
         )
         red_b64 = _make_red_frame_b64()
-        assert _is_color_conflict(response, image_b64=red_b64)
+        assert not _is_color_conflict(response, image_b64=red_b64)
 
 
 # ── _score_via_hough_circles / _estimate_signal_scores ───────────────────────
@@ -326,3 +328,39 @@ class TestSemanticExtractorSafetyMode:
         assert "signal_area=red" in prompt
         # signal_area must appear before colors= so LLM prioritises it.
         assert prompt.index("signal_area=") < prompt.index("colors=")
+
+
+class TestSafetyVehicleOnlyConflictAndCvStrength:
+    def test_vehicle_only_conflict_gate_allows_ped_green_vehicle_red(self):
+        response = (
+            "1. Pedestrian signal: green\n"
+            "2. Vehicle signal: red\n"
+            "3. Approaching vehicles: none\n\n"
+            "Wait."
+        )
+        red_b64 = _make_red_frame_b64()
+        assert not _is_color_conflict(response, image_b64=red_b64)
+
+    def test_cv_signal_strong_true_on_clear_red_signal(self):
+        red_b64 = _make_red_frame_b64()
+        assert _is_cv_signal_strong(red_b64, min_conf=0.58, min_visibility=0.0)
+
+
+class TestCoreSignalQuality:
+    def test_explicit_core_signals_true(self):
+        response = (
+            "1. Pedestrian signal: red\n"
+            "2. Vehicle signal: green\n"
+            "3. Approaching vehicles: none\n\n"
+            "Wait."
+        )
+        assert _has_explicit_core_signals(response)
+
+    def test_explicit_core_signals_false_on_estimated(self):
+        response = (
+            "1. 보행자 신호: 빨간색 계열 추정(정지 권고)\n"
+            "2. 차량 신호: yellow 계열 감지(추정)\n"
+            "3. 접근 차량: 판단 어려움(직접 확인 필요)\n\n"
+            "대기하세요."
+        )
+        assert not _has_explicit_core_signals(response)

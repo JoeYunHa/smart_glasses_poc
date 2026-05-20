@@ -22,6 +22,7 @@ SERVICE_CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "where", "route", "direction", "go", "navigate", "get to",
         # Korean
         "어디", "길", "방향", "경로", "가려면", "가는", "내비", "위치",
+        "찾아", "안내", "데려다",  # 찾아줘 / 안내해줘 / 데려다줘
     ],
     "device": [
         "turn", "switch", "volume", "brightness", "play", "pause", "control",
@@ -33,12 +34,16 @@ SERVICE_CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "ingredient", "dosage", "expiry", "prescription",
         # Korean
         "라벨", "약", "의약품", "성분", "복용", "유효기간", "읽어줘", "읽어",
-        "알려줘", "처방", "용량", "용법",
+        "처방", "용량", "용법",
+        # NOTE: "알려줘" intentionally excluded — it is a generic request suffix ("tell me")
+        # that appears in all service queries and causes context_memory queries to
+        # misroute to label_reader.
     ],
     "context_memory": [
         "remember", "earlier", "before", "previous", "last time", "memory", "looked at",
         # Korean
         "기억", "아까", "전에", "이전", "봤던", "봤어", "기억해", "저번",
+        "방금", "금방", "직전", "지난번", "아까전",  # 방금 본 거 / 금방 지나온 곳
     ],
     "scene": [
         "what do you see", "describe", "look", "scene", "image", "what is here", "show me",

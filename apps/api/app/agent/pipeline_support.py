@@ -19,6 +19,7 @@ from app.schemas.context import AgentMode, ContextRequest
 # Sourced from constants.py (single definition shared with keyframe_selector and router keywords).
 _LABEL_KEYWORDS: frozenset[str] = frozenset(SERVICE_CATEGORY_KEYWORDS["label"])
 _SAFETY_KEYWORDS: frozenset[str] = frozenset(SERVICE_CATEGORY_KEYWORDS["safety"])
+_MEMORY_KEYWORDS: frozenset[str] = frozenset(SERVICE_CATEGORY_KEYWORDS["context_memory"])
 
 
 def _is_label_request(user_request: str) -> bool:
@@ -29,6 +30,11 @@ def _is_label_request(user_request: str) -> bool:
 def _is_safety_request(user_request: str) -> bool:
     lower = user_request.lower()
     return any(kw in lower for kw in _SAFETY_KEYWORDS)
+
+
+def _is_memory_request(user_request: str) -> bool:
+    lower = user_request.lower()
+    return any(kw in lower for kw in _MEMORY_KEYWORDS)
 
 
 def _build_safety_burst_candidates(frame: np.ndarray) -> list[np.ndarray]:
@@ -93,9 +99,9 @@ def run_perception(
 
     if video_bytes:
         fps_target = 2 if mode == AgentMode.optimized else None
-        frames = sample_frames(video_bytes, fps_target=fps_target)
+        frames, total_frame_count = sample_frames(video_bytes, fps_target=fps_target)
         frame_sampling_ms = now_ms() - t0
-        original_frame_count = len(frames)
+        original_frame_count = total_frame_count
         if mode == AgentMode.optimized:
             t_keyframes = now_ms()
             keyframes = select_keyframes(
@@ -110,8 +116,10 @@ def run_perception(
             t_keyframes = now_ms()
             keyframes = select_keyframes(frames, max_keyframes=settings.max_keyframes)
             keyframe_selection_ms = now_ms() - t_keyframes
-        if keyframes and _is_safety_request(user_request):
-            # For safety inference, use one best frame from short burst/keyframe pool.
+        if mode == AgentMode.optimized and keyframes and _is_safety_request(user_request):
+            # Optimized-only safety refinement:
+            # choose one best frame for robust signal reading.
+            # Baseline keeps its original selection behavior for fair comparison.
             keyframes = [_pick_best_safety_frame(keyframes)]
         selected_keyframe_count = len(keyframes)
         if _is_safety_request(user_request):
@@ -120,7 +128,7 @@ def run_perception(
             image_b64_list = [frame_to_b64(frame) for frame in keyframes]
 
         semantic_prompt = ""
-        if mode == AgentMode.optimized and keyframes:
+        if mode == AgentMode.optimized and keyframes and not _is_memory_request(user_request):
             if _is_label_request(user_request):
                 extract_mode = "label"
             elif _is_safety_request(user_request):
@@ -150,11 +158,11 @@ def run_perception(
 
         semantic_prompt = ""
         chosen_img = img
-        if img is not None and _is_safety_request(user_request):
+        if mode == AgentMode.optimized and img is not None and _is_safety_request(user_request):
             burst = _build_safety_burst_candidates(img)
             chosen_img = _pick_best_safety_frame(burst)
 
-        if mode == AgentMode.optimized and chosen_img is not None:
+        if mode == AgentMode.optimized and chosen_img is not None and not _is_memory_request(user_request):
             if _is_label_request(user_request):
                 extract_mode = "label"
             elif _is_safety_request(user_request):

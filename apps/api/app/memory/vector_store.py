@@ -119,27 +119,42 @@ except Exception as e:
 # ---------------------------------------------------------------------------
 
 def upsert(text: str, payload: dict | None = None) -> None:
+    global _qdrant
     vec = _encode(text)
     if _qdrant is not None:
-        from qdrant_client.models import PointStruct
-        point_id = int(hashlib.md5(text.encode()).hexdigest()[:8], 16)
-        _qdrant.upsert(
-            collection_name=settings.qdrant_collection,
-            points=[PointStruct(id=point_id, vector=vec, payload={"text": text, **(payload or {})})],
-        )
+        try:
+            from qdrant_client.models import PointStruct
+
+            point_id = int(hashlib.md5(text.encode()).hexdigest()[:8], 16)
+            _qdrant.upsert(
+                collection_name=settings.qdrant_collection,
+                points=[PointStruct(id=point_id, vector=vec, payload={"text": text, **(payload or {})})],
+            )
+            return
+        except Exception as exc:
+            logger.warning("Qdrant upsert failed (%s) — falling back to in-memory store", exc)
+            _qdrant = None
+            _memory_store.append((vec, text))
     else:
         _memory_store.append((vec, text))
 
 
 def search(query: str, top_k: int = 5) -> list[str]:
+    global _qdrant
     vec = _encode(query)
     if _qdrant is not None:
-        result = _qdrant.query_points(
-            collection_name=settings.qdrant_collection,
-            query=vec,
-            limit=top_k,
-        )
-        return [h.payload.get("text", "") for h in result.points if h.payload]
+        try:
+            result = _qdrant.query_points(
+                collection_name=settings.qdrant_collection,
+                query=vec,
+                limit=top_k,
+            )
+            return [h.payload.get("text", "") for h in result.points if h.payload]
+        except Exception as exc:
+            logger.warning("Qdrant search failed (%s) — falling back to in-memory store", exc)
+            _qdrant = None
+            scored = sorted(_memory_store, key=lambda item: _cosine(vec, item[0]), reverse=True)
+            return [text for _, text in scored[:top_k]]
     else:
         scored = sorted(_memory_store, key=lambda item: _cosine(vec, item[0]), reverse=True)
         return [text for _, text in scored[:top_k]]

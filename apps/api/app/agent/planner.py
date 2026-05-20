@@ -78,8 +78,10 @@ async def run_pipeline(
         has_devices = len(ctx.nearby_devices) > 0
         _pre_service, _pre_conf = _router.route(ctx.user_request, location_type, has_devices)
         skip_retrieval = (
-            _pre_service == "device_control"
-            and _pre_conf >= settings.router_confidence_threshold
+            (_pre_service == "device_control" and _pre_conf >= settings.router_confidence_threshold)
+            # context_memory handles retrieval internally with a larger budget (8 vs 5);
+            # the planner-level graph_context is unused by that service.
+            or _pre_service == "context_memory"
         )
 
         if skip_retrieval:
@@ -115,6 +117,10 @@ async def run_pipeline(
     )
     vlm_ms = _ms() - t3
     vlm_used = routing_result.vlm_used or vlm_used_service
+
+    # context_memory performs retrieval internally (budget=8); reflect its actual count.
+    if service_name == "context_memory":
+        retrieved_nodes = service_vlm_usage.get("retrieved_nodes", retrieved_nodes)
 
     total_ms = max(1, _ms() - t_start)
     latency = build_latency(perception, graph_retrieval_ms, routing_ms, vlm_ms, total_ms)
@@ -172,7 +178,7 @@ async def run_pipeline(
         response_text=response_text,
         response_preview=response_text[:300],
         path_used=str(service_vlm_usage.get("path_used", "unknown")),
-        quality_check_passed=bool(service_vlm_usage.get("quality_check_passed", True)),
+        quality_check_passed=service_vlm_usage.get("quality_check_passed"),
     )
     await eval_logger.write_log(log)
 

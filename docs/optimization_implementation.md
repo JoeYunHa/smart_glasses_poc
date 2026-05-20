@@ -442,13 +442,17 @@ def sanitize_safety_response(text: str) -> str:
   "router_confidence": 0.84,
   "original_frame_count": 180,
   "selected_keyframe_count": 6,
-  "vlm_call_count": 1,
+  "vlm_call_count": 2,
   "retrieved_graph_nodes": 8,
   "token_count": 312,
   "image_payload_bytes": 2048,
   "cloud_called": true,
   "fallback_reason": null,
   "failure_type": null,
+  "path_used": "full_image_retry_highres",
+  "quality_check_passed": true,
+  "response_text": "현재 보행자 신호가 적색입니다. 안전을 위해 신호가 바뀔 때까지 대기하세요.",
+  "response_preview": "현재 보행자 신호가 적색입니다...",
   "latency_ms": {
     "frame_sampling": 90,
     "graph_retrieval": 35,
@@ -460,6 +464,45 @@ def sanitize_safety_response(text: str) -> str:
 ```
 
 `vlm_call_count`는 semantic fallback이 발동된 경우 2로 기록됩니다. `image_payload_bytes`는 실제 VLM에 전달된 바이트를 서비스 usage dict의 `image_sent` 플래그를 기반으로 실측합니다.
+
+`path_used`는 어떤 실행 경로가 사용됐는지를 기록합니다:
+- `vision_direct`: baseline vision 경로
+- `text_only`: optimized text-only 성공 경로
+- `full_image_retry_highres`: text-only 실패 후 고해상도 vision retry
+- `full_image_fallback`: 최종 fallback
+
+`quality_check_passed`는 서비스별 품질 게이트 통과 여부이며, metrics.py가 `by_service[service][mode].quality_check_rate`로 집계합니다. 구버전 로그(필드 없음)는 집계 분모에서 제외합니다.
+
+### 5.3 서비스별 성능 집계 (`metrics.py`)
+
+`by_mode` 집계와 별도로 `by_service[service][mode]` 구조로 서비스별 교차 분석이 가능합니다:
+
+```python
+# 집계 출력 구조 예시
+{
+  "by_service": {
+    "label_reader": {
+      "baseline": { "avg_image_payload_bytes": 85000, "quality_check_rate": 0.0, ... },
+      "optimized": { "avg_image_payload_bytes": 120,   "quality_check_rate": 1.0, ... }
+    },
+    "safety_alert": {
+      "baseline": { "avg_vlm_calls": 1.0, "avg_latency_ms": 1200, ... },
+      "optimized": { "avg_vlm_calls": 1.8, "avg_latency_ms": 3500, ... }
+    }
+  }
+}
+```
+
+| 서비스 | 최적화 효과 | 주의사항 |
+|--------|------------|---------|
+| label_reader | payload ≈ 0 (OCR text-only), quality 0%→100% | pytesseract 미설치 시 fallback |
+| safety_alert | 색상 충돌 시 재시도 → quality 향상 | text-only 재시도로 VLM count·latency 증가 가능 |
+| context_memory | VLM call 0 (graph retrieval 재사용) | retrieval 품질에 의존 |
+| scene_assistant | 항상 vision, graph context로 품질 보강 | payload 절감 없음 |
+
+프론트엔드 `PerformancePanel`의 `ServiceBreakdown` 컴포넌트가 이 데이터를 시각화하며,
+각 서비스 카드에서 `base → opt` 방향으로 지표를 비교합니다.
+optimized가 개선되면 초록, 악화되면 amber, 동일하면 중립색으로 표시됩니다.
 
 ---
 
@@ -531,8 +574,8 @@ run_vlm_service  dispatch()
 | `frame_sampler.py` | 01 | 영상 → 목표 FPS 프레임 추출 |
 | `semantic_extractor.py` | 02 | OpenCV → SemanticPayload → text prompt |
 | `common.py` | 02 | `dispatch()` / `run_semantic_service()` / `run_vlm_service()` |
-| `scene_assistant.py` | 02 | dispatch() 적용 |
-| `safety_alert.py` | 02 | dispatch() + sanitize_safety_response |
+| `scene_assistant.py` | 02 | 항상 vision(run_vlm_service); semantic은 보조 컨텍스트, Prior context 자체 스트립 |
+| `safety_alert.py` | 02 | 독립 경로(_run_optimized_safety/_run_baseline_safety) + sanitize_safety_response |
 | `navigation.py` | 02 | dispatch() + GPS + graph_context 주입 |
 | `label_reader.py` | 02 | OCR-path text-only, policy.sanitize_response() 재사용 |
 | `graph_store.py` | 03 | NetworkX Temporal Scene Graph, BFS 양방향 탐색 |

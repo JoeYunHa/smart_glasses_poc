@@ -81,9 +81,20 @@ export interface ModeMetrics {
   cloud_call_ratio: number;
   fallback_distribution: Record<string, number>;
   failure_distribution: Record<string, number>;
+  quality_check_rate: number;
+}
+
+export interface ServiceModeMetrics {
+  count: number;
+  avg_latency_ms: number;
+  avg_vlm_calls: number;
+  avg_tokens: number;
+  avg_image_payload_bytes: number;
+  quality_check_rate: number;
 }
 
 export interface MetricsData {
   total: number;
   by_mode: Record<string, ModeMetrics>;
+  by_service: Record<string, Partial<Record<AgentMode, ServiceModeMetrics>>>;
 }

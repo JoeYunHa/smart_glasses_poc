@@ -43,7 +43,7 @@ async def run_vlm_service(
         response = postprocess(response)
     usage["vlm_calls"] = 1
     usage["image_sent"] = 1 if image_b64 is not None else 0
-    usage["path_used"] = "vision_direct"
+    usage["path_used"] = "vision_direct" if image_b64 is not None else "text_only"
     usage["quality_check_passed"] = (
         True if response_quality_checker is None else response_quality_checker(response)
     )
@@ -51,6 +51,7 @@ async def run_vlm_service(
 
 
 _MIN_SEMANTIC_CHARS = 50
+_MAX_ROI_FALLBACK_ATTEMPTS = 1
 
 
 def _build_focus_crop_candidates_b64(image_b64: str) -> list[str]:
@@ -136,7 +137,7 @@ async def run_semantic_service(
         focus_crops = _build_focus_crop_candidates_b64(fallback_image_b64)
         fallback_usage = {}
         roi_attempted = False
-        for idx, focus_crop_b64 in enumerate(focus_crops):
+        for idx, focus_crop_b64 in enumerate(focus_crops[:_MAX_ROI_FALLBACK_ATTEMPTS]):
             roi_attempted = True
             focused_prompt = (
                 (roi_refocus_hint or "Analyze this image region and answer the user's request.")

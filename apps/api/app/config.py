@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     qdrant_collection: str = "scene_contexts"
 
     # Agent
-    router_confidence_threshold: float = 0.35
+    router_confidence_threshold: float = 0.40
     max_keyframes: int = 8
 
     # Logging

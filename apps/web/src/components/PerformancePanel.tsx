@@ -1,7 +1,7 @@
 import { BarChart3, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { getMetrics } from "@/api/agentApi";
-import type { MetricsData } from "@/types/agent";
+import type { MetricsData, ServiceModeMetrics } from "@/types/agent";
 
 function fmtBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -123,6 +123,10 @@ export default function PerformancePanel() {
               />
             </div>
           )}
+
+          {metrics.by_service && Object.keys(metrics.by_service).length > 0 && (
+            <ServiceBreakdown byService={metrics.by_service} />
+          )}
         </div>
       )}
     </div>
@@ -162,24 +166,26 @@ function ComparisonBar({
   fmt: (v: number) => string;
   savingLabel: string;
 }) {
-  if (!baseline || !optimized) return null;
-  const saved = Math.round(((baseline - optimized) / baseline) * 100);
+  if (baseline == null || optimized == null) return null;
+  const maxValue = Math.max(baseline, optimized);
+  if (maxValue <= 0) return null;
+  const saved = baseline > 0 ? Math.round(((baseline - optimized) / baseline) * 100) : null;
   return (
     <div className="rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-4">
       <p className="panel-label mb-2">{title}</p>
       <p className="display-face text-lg font-bold uppercase text-white">{label}</p>
       <div className="mt-3 space-y-2">
-        <BarRow label="Baseline" value={baseline} max={Math.max(baseline, optimized)} fmt={fmt} color="bg-gray-500" />
+        <BarRow label="Baseline" value={baseline} max={maxValue} fmt={fmt} color="bg-gray-500" />
         <BarRow
           label="Optimized"
           value={optimized}
-          max={Math.max(baseline, optimized)}
+          max={maxValue}
           fmt={fmt}
           color="bg-[var(--signal)]"
         />
       </div>
-      <p className={`mt-3 text-sm font-medium ${saved > 0 ? "text-[var(--signal)]" : "text-[var(--text-dim)]"}`}>
-        {saved > 0 ? `Optimized is ${saved}% ${savingLabel}` : "Run more comparisons to see a clearer delta."}
+      <p className={`mt-3 text-sm font-medium ${saved !== null && saved > 0 ? "text-[var(--signal)]" : "text-[var(--text-dim)]"}`}>
+        {saved !== null && saved > 0 ? `Optimized is ${saved}% ${savingLabel}` : "Run more comparisons to see a clearer delta."}
       </p>
     </div>
   );
@@ -206,6 +212,88 @@ function BarRow({
         <div className={`${color} h-2 rounded-full`} style={{ width: `${pct}%` }} />
       </div>
       <span className="w-16 text-right text-xs font-mono text-[var(--text-dim)]">{fmt(value)}</span>
+    </div>
+  );
+}
+
+const SERVICE_LABELS: Record<string, string> = {
+  safety_alert: "Safety Alert",
+  label_reader: "Label Reader",
+  scene_assistant: "Scene Assistant",
+  context_memory: "Context Memory",
+  device_control: "Device Control",
+  navigation: "Navigation",
+};
+
+function ServiceBreakdown({
+  byService,
+}: {
+  byService: Record<string, Partial<Record<"baseline" | "optimized", ServiceModeMetrics>>>;
+}) {
+  const services = Object.keys(byService).sort();
+
+  return (
+    <div className="rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.04)] p-4">
+      <p className="panel-label mb-1">Per-Service Breakdown</p>
+      <h3 className="display-face mb-4 text-base font-bold uppercase text-white">
+        Baseline vs Optimized by Service
+      </h3>
+      <div className="space-y-3">
+        {services.map((svc) => {
+          const b = byService[svc]?.baseline;
+          const o = byService[svc]?.optimized;
+          const label = SERVICE_LABELS[svc] ?? svc;
+          return (
+            <div key={svc} className="rounded-[14px] border border-[rgba(255,255,255,0.07)] bg-[rgba(3,9,14,0.5)] p-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--amber)]">
+                {label}
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <ServiceCell label="Latency" b={b?.avg_latency_ms} o={o?.avg_latency_ms} fmt={(v) => `${v}ms`} lowerIsBetter />
+                <ServiceCell label="VLM Calls" b={b?.avg_vlm_calls} o={o?.avg_vlm_calls} fmt={(v) => v.toFixed(2)} lowerIsBetter />
+                <ServiceCell label="Payload" b={b?.avg_image_payload_bytes} o={o?.avg_image_payload_bytes} fmt={fmtBytes} lowerIsBetter />
+                <ServiceCell label="Quality %" b={b?.quality_check_rate} o={o?.quality_check_rate} fmt={(v) => `${(v * 100).toFixed(0)}%`} lowerIsBetter={false} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ServiceCell({
+  label,
+  b,
+  o,
+  fmt,
+  lowerIsBetter,
+}: {
+  label: string;
+  b: number | undefined;
+  o: number | undefined;
+  fmt: (v: number) => string;
+  lowerIsBetter: boolean;
+}) {
+  const bVal = b ?? null;
+  const oVal = o ?? null;
+
+  const oColor = (() => {
+    if (oVal === null || bVal === null) return "text-[var(--text-dim)]";
+    if (oVal === bVal) return "text-[var(--text-dim)]";
+    const optimizedWins = lowerIsBetter ? oVal < bVal : oVal > bVal;
+    return optimizedWins ? "text-[var(--signal)]" : "text-[var(--amber)]";
+  })();
+
+  return (
+    <div className="rounded-[10px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] p-2">
+      <p className="text-[10px] uppercase tracking-[0.1em] text-[var(--text-faint)]">{label}</p>
+      <div className="mt-1.5 flex items-end gap-1.5">
+        <span className="font-mono text-xs text-[var(--text-dim)]">{bVal !== null ? fmt(bVal) : "—"}</span>
+        <span className="text-[10px] text-[var(--text-faint)]">→</span>
+        <span className={`font-mono text-xs font-semibold ${oColor}`}>{oVal !== null ? fmt(oVal) : "—"}</span>
+      </div>
+      <p className="mt-0.5 text-[9px] text-[var(--text-faint)]">base → opt</p>
     </div>
   );
 }
